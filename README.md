@@ -89,7 +89,8 @@ docs/
   kód (osztályok, változók, fájlok, commit üzenetek) **angol**. A felület
   magyar alapértelmezett, angolra váltható.
 - **Követelmény-azonosítók:** `FR-xxx` (funkcionális), `BR-xx` (üzleti szabály),
-  `NFR-xx` (nemfunkcionális), `EC-xxx` (hibakód). A User Story-k ezekre
+  `NFR-xx` (nemfunkcionális), valamint a hibakatalógus szöveges kódjai
+  (pl. `SEAT_TAKEN`, `PAYMENT_DECLINED`). A User Story-k ezekre
   hivatkoznak, így a specifikáció és a backlog összeköthető.
 - **Munkakövetés:** It's a Plan, `JGY` projekt. A repó Markdown az elsődleges
   forrás a specifikációhoz; a tracker a work item-ekhez.

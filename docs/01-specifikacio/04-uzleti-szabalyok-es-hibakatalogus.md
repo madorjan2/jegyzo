@@ -1,7 +1,8 @@
 # 04 — Üzleti szabályok és hibakatalógus
 
-> Az üzleti szabályok (`BR-xx`) a viselkedést, a hibakódok (`EC-xxx`) a
-> megfigyelhető hibaválaszt írják le. Mindkettő **tesztelhető állítás**.
+> Az üzleti szabályok (`BR-xx`) a viselkedést, a hibakódok (pl. `SEAT_TAKEN`,
+> `PAYMENT_DECLINED`) a megfigyelhető hibaválaszt írják le. Mindkettő
+> **tesztelhető állítás**.
 
 ---
 
