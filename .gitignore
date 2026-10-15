@@ -1,0 +1,43 @@
+# Secrets — NEVER commit
+.env
+.env.*
+!.env.example
+
+# Local temp / scratch
+*.tmp
+.tmp/
+
+# Node
+node_modules/
+dist/
+build/
+coverage/
+*.log
+npm-debug.log*
+yarn-error.log*
+.pnpm-store/
+
+# NestJS / TS
+*.tsbuildinfo
+
+# React / Vite
+.vite/
+.parcel-cache/
+
+# Docker volumes / local data
+data/
+pgdata/
+volumes/
+
+# Editors / OS
+.idea/
+.vscode/*
+!.vscode/extensions.json
+.DS_Store
+Thumbs.db
+
+# Python (seed scripts / tooling)
+__pycache__/
+*.py[cod]
+.venv/
+venv/

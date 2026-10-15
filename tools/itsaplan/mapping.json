@@ -1,0 +1,497 @@
+{
+  "E1": {
+    "id": 642,
+    "identifier": "JGY-3",
+    "title": "Platform alapok és futtatható váz"
+  },
+  "E1-S1": {
+    "id": 643,
+    "identifier": "JGY-4",
+    "title": "Docker Compose alapú projektváz létrehozása (API, felület, adatbázis)"
+  },
+  "E1-S2": {
+    "id": 644,
+    "identifier": "JGY-5",
+    "title": "API health végpont és strukturált naplózás"
+  },
+  "E1-S3": {
+    "id": 645,
+    "identifier": "JGY-6",
+    "title": "Egységes hibaválasz-formátum és hibakódok bevezetése"
+  },
+  "E1-S4": {
+    "id": 646,
+    "identifier": "JGY-7",
+    "title": "Adatbázis migráció és determinisztikus seed keretrendszer"
+  },
+  "E1-S5": {
+    "id": 647,
+    "identifier": "JGY-8",
+    "title": "Nemzetköziesítési keretrendszer (hu/en) beállítása"
+  },
+  "E1-S6": {
+    "id": 648,
+    "identifier": "JGY-9",
+    "title": "OpenAPI dokumentáció kiszolgálása"
+  },
+  "E1-S7": {
+    "id": 649,
+    "identifier": "JGY-10",
+    "title": "CORS és környezeti konfiguráció kezelése"
+  },
+  "E2": {
+    "id": 650,
+    "identifier": "JGY-11",
+    "title": "Felhasználói fiók és hitelesítés"
+  },
+  "E2-S1": {
+    "id": 651,
+    "identifier": "JGY-12",
+    "title": "Regisztráció e-mail címmel és jelszóval"
+  },
+  "E2-S2": {
+    "id": 652,
+    "identifier": "JGY-13",
+    "title": "Bejelentkezés access és refresh tokennel"
+  },
+  "E2-S3": {
+    "id": 653,
+    "identifier": "JGY-14",
+    "title": "Access token megújítása refresh tokennel"
+  },
+  "E2-S4": {
+    "id": 654,
+    "identifier": "JGY-15",
+    "title": "Kijelentkezés és refresh token visszavonása"
+  },
+  "E2-S5": {
+    "id": 655,
+    "identifier": "JGY-16",
+    "title": "Profil megtekintése és módosítása"
+  },
+  "E2-S6": {
+    "id": 656,
+    "identifier": "JGY-17",
+    "title": "Jelszócsere a jelenlegi jelszó megadásával"
+  },
+  "E2-S7": {
+    "id": 657,
+    "identifier": "JGY-18",
+    "title": "Szerepkör-alapú jogosultság-ellenőrzés az API-n"
+  },
+  "E2-S8": {
+    "id": 658,
+    "identifier": "JGY-19",
+    "title": "Inaktív felhasználó kizárása"
+  },
+  "E3": {
+    "id": 659,
+    "identifier": "JGY-20",
+    "title": "Eseménykatalógus és keresés"
+  },
+  "E3-S1": {
+    "id": 660,
+    "identifier": "JGY-21",
+    "title": "Nyilvános eseménylista"
+  },
+  "E3-S2": {
+    "id": 661,
+    "identifier": "JGY-22",
+    "title": "Szöveges keresés ékezetfüggetlen egyezéssel"
+  },
+  "E3-S3": {
+    "id": 662,
+    "identifier": "JGY-23",
+    "title": "Szűrés kategóriára, városra és helyszínre"
+  },
+  "E3-S4": {
+    "id": 663,
+    "identifier": "JGY-24",
+    "title": "Szűrés dátumtartományra"
+  },
+  "E3-S5": {
+    "id": 664,
+    "identifier": "JGY-25",
+    "title": "Szűrés ártartományra"
+  },
+  "E3-S6": {
+    "id": 665,
+    "identifier": "JGY-26",
+    "title": "„Van szabad hely” szűrő"
+  },
+  "E3-S7": {
+    "id": 666,
+    "identifier": "JGY-27",
+    "title": "Rendezés ár, dátum és népszerűség szerint"
+  },
+  "E3-S8": {
+    "id": 667,
+    "identifier": "JGY-28",
+    "title": "Lapozás"
+  },
+  "E3-S9": {
+    "id": 668,
+    "identifier": "JGY-29",
+    "title": "Esemény részletei oldal"
+  },
+  "E3-S10": {
+    "id": 669,
+    "identifier": "JGY-30",
+    "title": "Lemondott és lejárt esemény kezelése"
+  },
+  "E4": {
+    "id": 670,
+    "identifier": "JGY-31",
+    "title": "Helyszín és ülőhelytérkép"
+  },
+  "E4-S1": {
+    "id": 671,
+    "identifier": "JGY-32",
+    "title": "Helyszín nyilvántartása (létrehozás, szerkesztés, aktiválás)"
+  },
+  "E4-S2": {
+    "id": 672,
+    "identifier": "JGY-33",
+    "title": "Szektorok, sorok és székek definiálása"
+  },
+  "E4-S3": {
+    "id": 673,
+    "identifier": "JGY-34",
+    "title": "Állóhely-kapacitás megadása"
+  },
+  "E4-S4": {
+    "id": 674,
+    "identifier": "JGY-35",
+    "title": "Ülőhelytérkép megjelenítése"
+  },
+  "E4-S5": {
+    "id": 675,
+    "identifier": "JGY-36",
+    "title": "Szabad, zárolt és eladott székek jelölése"
+  },
+  "E4-S6": {
+    "id": 676,
+    "identifier": "JGY-37",
+    "title": "Székek kijelölése és kijelölés törlése"
+  },
+  "E4-S7": {
+    "id": 677,
+    "identifier": "JGY-38",
+    "title": "Térkép állapotának frissítése"
+  },
+  "E5": {
+    "id": 678,
+    "identifier": "JGY-39",
+    "title": "Jegytípusok és árazás"
+  },
+  "E5-S1": {
+    "id": 679,
+    "identifier": "JGY-40",
+    "title": "Jegytípus létrehozása eseményhez és szektorhoz"
+  },
+  "E5-S2": {
+    "id": 680,
+    "identifier": "JGY-41",
+    "title": "Ár és vásárlói limit megadása"
+  },
+  "E5-S3": {
+    "id": 681,
+    "identifier": "JGY-42",
+    "title": "Értékesítési ablak kezelése"
+  },
+  "E5-S4": {
+    "id": 682,
+    "identifier": "JGY-43",
+    "title": "Jegytípus aktiválása és deaktiválása"
+  },
+  "E5-S5": {
+    "id": 683,
+    "identifier": "JGY-44",
+    "title": "Legkisebb jegyár megjelenítése"
+  },
+  "E6": {
+    "id": 684,
+    "identifier": "JGY-45",
+    "title": "Foglalás"
+  },
+  "E6-S1": {
+    "id": 685,
+    "identifier": "JGY-46",
+    "title": "Foglalás létrehozása ülőhelyekre"
+  },
+  "E6-S2": {
+    "id": 686,
+    "identifier": "JGY-47",
+    "title": "Foglalás létrehozása állóhelyre darabszámmal"
+  },
+  "E6-S3": {
+    "id": 687,
+    "identifier": "JGY-48",
+    "title": "Helyek zárolása és a zár lejárata"
+  },
+  "E6-S4": {
+    "id": 688,
+    "identifier": "JGY-49",
+    "title": "Foglalás összegzésének kiszámítása"
+  },
+  "E6-S5": {
+    "id": 689,
+    "identifier": "JGY-50",
+    "title": "Vásárlói limit érvényesítése"
+  },
+  "E6-S6": {
+    "id": 690,
+    "identifier": "JGY-51",
+    "title": "Kapacitás érvényesítése"
+  },
+  "E6-S7": {
+    "id": 691,
+    "identifier": "JGY-52",
+    "title": "Foglalás lemondása fizetés előtt"
+  },
+  "E6-S8": {
+    "id": 692,
+    "identifier": "JGY-53",
+    "title": "Foglalás állapotának és záróidejének megjelenítése"
+  },
+  "E6-S9": {
+    "id": 693,
+    "identifier": "JGY-54",
+    "title": "Egyidejű foglalások kezelése"
+  },
+  "E7": {
+    "id": 694,
+    "identifier": "JGY-55",
+    "title": "Fizetés"
+  },
+  "E7-S1": {
+    "id": 695,
+    "identifier": "JGY-56",
+    "title": "Fizetési űrlap és fizetés indítása"
+  },
+  "E7-S2": {
+    "id": 696,
+    "identifier": "JGY-57",
+    "title": "Kártyaadatok validálása"
+  },
+  "E7-S3": {
+    "id": 697,
+    "identifier": "JGY-58",
+    "title": "Mock fizetési szolgáltatás determinisztikus kimenetelekkel"
+  },
+  "E7-S4": {
+    "id": 698,
+    "identifier": "JGY-59",
+    "title": "Sikeres fizetés feldolgozása"
+  },
+  "E7-S5": {
+    "id": 699,
+    "identifier": "JGY-60",
+    "title": "Sikertelen fizetés kezelése és újrapróbálás"
+  },
+  "E7-S6": {
+    "id": 700,
+    "identifier": "JGY-61",
+    "title": "Fizetési kérés idempotenciája"
+  },
+  "E7-S7": {
+    "id": 701,
+    "identifier": "JGY-62",
+    "title": "Fizetési tranzakciók naplózása"
+  },
+  "E7-S8": {
+    "id": 702,
+    "identifier": "JGY-63",
+    "title": "Fizetési hibák megjelenítése a felületen"
+  },
+  "E8": {
+    "id": 703,
+    "identifier": "JGY-64",
+    "title": "Jegykibocsátás és értesítések"
+  },
+  "E8-S1": {
+    "id": 704,
+    "identifier": "JGY-65",
+    "title": "Jegyek kiállítása sikeres fizetés után"
+  },
+  "E8-S2": {
+    "id": 705,
+    "identifier": "JGY-66",
+    "title": "Egyedi, meg nem jósolható jegykód generálása"
+  },
+  "E8-S3": {
+    "id": 706,
+    "identifier": "JGY-67",
+    "title": "PDF jegy előállítása"
+  },
+  "E8-S4": {
+    "id": 707,
+    "identifier": "JGY-68",
+    "title": "QR-kód megjelenítése a jegyen"
+  },
+  "E8-S5": {
+    "id": 708,
+    "identifier": "JGY-69",
+    "title": "Jegy letöltése jogosultság-ellenőrzéssel"
+  },
+  "E8-S6": {
+    "id": 709,
+    "identifier": "JGY-70",
+    "title": "Jegy érvényességének nyilvános ellenőrzése"
+  },
+  "E8-S7": {
+    "id": 710,
+    "identifier": "JGY-71",
+    "title": "Értesítő e-mail küldése vásárlás után"
+  },
+  "E8-S8": {
+    "id": 711,
+    "identifier": "JGY-72",
+    "title": "Jegy e-mail újraküldése"
+  },
+  "E8-S9": {
+    "id": 712,
+    "identifier": "JGY-73",
+    "title": "„Jegyeim” oldal"
+  },
+  "E9": {
+    "id": 713,
+    "identifier": "JGY-74",
+    "title": "Admin backoffice"
+  },
+  "E9-S1": {
+    "id": 714,
+    "identifier": "JGY-75",
+    "title": "Esemény létrehozása"
+  },
+  "E9-S2": {
+    "id": 715,
+    "identifier": "JGY-76",
+    "title": "Esemény szerkesztése állapotfüggő korlátokkal"
+  },
+  "E9-S3": {
+    "id": 716,
+    "identifier": "JGY-77",
+    "title": "Esemény publikálása"
+  },
+  "E9-S4": {
+    "id": 717,
+    "identifier": "JGY-78",
+    "title": "Értékesítés szüneteltetése és folytatása"
+  },
+  "E9-S5": {
+    "id": 718,
+    "identifier": "JGY-79",
+    "title": "Esemény törlése"
+  },
+  "E9-S6": {
+    "id": 719,
+    "identifier": "JGY-80",
+    "title": "Eseménylista szűréssel"
+  },
+  "E9-S7": {
+    "id": 720,
+    "identifier": "JGY-81",
+    "title": "Felhasználók listázása és keresése"
+  },
+  "E9-S8": {
+    "id": 721,
+    "identifier": "JGY-82",
+    "title": "Felhasználó szerepkörének módosítása"
+  },
+  "E9-S9": {
+    "id": 722,
+    "identifier": "JGY-83",
+    "title": "Felhasználó aktiválása és deaktiválása"
+  },
+  "E9-S10": {
+    "id": 723,
+    "identifier": "JGY-84",
+    "title": "Foglalások listázása és szűrése"
+  },
+  "E9-S11": {
+    "id": 724,
+    "identifier": "JGY-85",
+    "title": "Foglalás részleteinek megtekintése"
+  },
+  "E9-S12": {
+    "id": 725,
+    "identifier": "JGY-86",
+    "title": "Esemény statisztika"
+  },
+  "E9-S13": {
+    "id": 726,
+    "identifier": "JGY-87",
+    "title": "Szervezői jogosultsági korlát érvényesítése"
+  },
+  "E9-S14": {
+    "id": 727,
+    "identifier": "JGY-88",
+    "title": "Visszatérítések listája"
+  },
+  "E10": {
+    "id": 728,
+    "identifier": "JGY-89",
+    "title": "Esemény lemondása és visszatérítés"
+  },
+  "E10-S1": {
+    "id": 729,
+    "identifier": "JGY-90",
+    "title": "Esemény lemondása adminisztrátor által"
+  },
+  "E10-S2": {
+    "id": 730,
+    "identifier": "JGY-91",
+    "title": "Fizetett foglalások automatikus visszatérítése"
+  },
+  "E10-S3": {
+    "id": 731,
+    "identifier": "JGY-92",
+    "title": "Függő foglalások lezárása és helyek felszabadítása"
+  },
+  "E10-S4": {
+    "id": 732,
+    "identifier": "JGY-93",
+    "title": "Jegyek visszavonása és QR érvénytelenítése"
+  },
+  "E10-S5": {
+    "id": 733,
+    "identifier": "JGY-94",
+    "title": "Értesítés a lemondásról és a visszatérítésről"
+  },
+  "E10-S6": {
+    "id": 734,
+    "identifier": "JGY-95",
+    "title": "Pénzügyi napló vezetése"
+  },
+  "E10-S7": {
+    "id": 735,
+    "identifier": "JGY-96",
+    "title": "Ismételt lemondás és visszatérítés tiltása"
+  },
+  "E11": {
+    "id": 736,
+    "identifier": "JGY-97",
+    "title": "Nyelv és megjelenítés"
+  },
+  "E11-S1": {
+    "id": 737,
+    "identifier": "JGY-98",
+    "title": "Nyelvváltó a felületen"
+  },
+  "E11-S2": {
+    "id": 738,
+    "identifier": "JGY-99",
+    "title": "API hibaüzenetek nyelvfüggése"
+  },
+  "E11-S3": {
+    "id": 739,
+    "identifier": "JGY-100",
+    "title": "Dátum és pénzösszeg formázása nyelvenként"
+  },
+  "E11-S4": {
+    "id": 740,
+    "identifier": "JGY-101",
+    "title": "E-mail sablonok nyelvfüggése"
+  }
+}

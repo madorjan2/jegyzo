@@ -1,0 +1,424 @@
+{
+  "epics": [
+    {
+      "code": "E7",
+      "title": "Fizetés",
+      "goal": "A vásárlási folyamat lezárása szimulált bankkártyás fizetéssel. Az epic tartalmazza a fizetési űrlapot és a fizetés indítását, a kártyaadatok validálását, a determinisztikus kimenetelű mock fizetési szolgáltatást, a sikeres és sikertelen fizetés feldolgozását, az idempotenciát, a fizetési tranzakciók naplózását és a fizetési hibák felületi megjelenítését. A fizetés a Booking állapotgépen a ZAROLT/FIZETESRE_VAR/FIZETVE átmeneteket és a PaymentTransaction append-only naplót érinti.",
+      "stories": [
+        {
+          "code": "E7-S1",
+          "title": "Fizetési űrlap és fizetés indítása",
+          "points": 5,
+          "priority": "urgent",
+          "requirements": ["FR-601"],
+          "depends_on": ["E6-S4"],
+          "description": "A ZAROLT foglaláshoz a vásárló kártyaadatokat ad meg egy fizetési űrlapon, amely a foglalás végösszegét (total) és a hátralévő záróidőt (holdExpiresAt) is mutatja. Sikeres indítás esetén a Booking állapota ZAROLT-ból FIZETESRE_VAR-ba kerül, a háttérben pedig elindul a fizetési kísérlet. Az űrlap csak a foglalás tulajdonosa (vagy admin) számára érhető el.",
+          "acceptance": [
+            "A fizetési űrlap a foglalás végösszegét és a hátralévő záróidőt mutatja; az 5. foglalásnál a megjelenő összeg 15 250 Ft, a záróidő a holdExpiresAt-ig hátralévő idő.",
+            "Érvényes kártyaadatokkal indított fizetés a foglalás állapotát ZAROLT-ból FIZETESRE_VAR-ba állítja.",
+            "Lejárt zár esetén (holdExpiresAt a múltban) a fizetésindítás BOOKING_EXPIRED hibakódot ad 409-es státusszal, és nem jön létre fizetési kísérlet.",
+            "Már FIZETVE állapotú foglalásnál a fizetésindítás PAYMENT_ALREADY_COMPLETED hibakódot ad 409-es státusszal.",
+            "Bejelentkezés nélküli fizetésindítás UNAUTHENTICATED, más felhasználó foglalásánál FORBIDDEN hibakódot ad 403-as státusszal."
+          ],
+          "dod": [
+            "A fizetésindító végpont szerepel az OpenAPI leírásban a BOOKING_EXPIRED és PAYMENT_ALREADY_COMPLETED hibakódokkal.",
+            "Az űrlap minden szövege nyelvi erőforrásból származik, magyar és angol nyelven is teljes.",
+            "A záróidő visszaszámlálás a holdExpiresAt alapján, a szerver időpontjához igazítva működik.",
+            "A végpont szerepkör- és tulajdonos-ellenőrzést végez a szerveroldalon.",
+            "A fizetésindítás eredményeként nem módosul a Booking pénzügyi összege (subtotal, serviceFee, total)."
+          ]
+        },
+        {
+          "code": "E7-S2",
+          "title": "Kártyaadatok validálása",
+          "points": 5,
+          "priority": "high",
+          "requirements": ["FR-602", "BR-12"],
+          "depends_on": ["E7-S1"],
+          "description": "A fizetés megkezdése előtt a rendszer ellenőrzi a kártyaszámot (13-19 számjegy és Luhn-érvényesség), a lejáratot (jövőbeli hónap) és a CVC-t (3 számjegy, AMEX esetén 4). A beviteli szóközök megengedettek, a validáció a mock PSP hívása előtt történik. Érvénytelen adat esetén nem jön létre PaymentTransaction, és a foglalás állapota nem változik.",
+          "acceptance": [
+            "Luhn-hibás kártyaszám (pl. 1234 5678 9012 3456) esetén a válasz CARD_INVALID_NUMBER hibakód 400-as státusszal, és nem indul PSP hívás.",
+            "A múltbeli lejárat (pl. 01/2020) CARD_EXPIRED hibakódot ad 400-as státusszal.",
+            "Nem AMEX kártyánál a 3-tól eltérő jegyű CVC (pl. 12 vagy 1234) CARD_CVC_INVALID hibakódot ad 400-as státusszal.",
+            "AMEX kártyánál a 4 jegyű CVC elfogadott, a 3 jegyű CARD_CVC_INVALID hibakódot ad.",
+            "A 4242 4242 4242 4242 és a 4242424242424242 bevitel ugyanannak a kártyaszámnak számít, a szóközök eltávolítása után.",
+            "13-nál rövidebb vagy 19-nél hosszabb kártyaszám CARD_INVALID_NUMBER hibakódot ad."
+          ],
+          "dod": [
+            "A validációs szabályok (Luhn, lejárat, CVC hossz, AMEX-kivétel) külön, egységtesztelt komponensben élnek.",
+            "A hibakódok szerepelnek az OpenAPI leírásban 400-as státusszal.",
+            "A validációs hibaüzenet magyar és angol nyelven is megjelenik.",
+            "Érvénytelen adatnál a napló és a PaymentTransaction tábla változatlan marad.",
+            "A bemeneti mezők hiba esetén a hibás mezőt (field) is megjelölik a details mezőben."
+          ]
+        },
+        {
+          "code": "E7-S3",
+          "title": "Mock fizetési szolgáltatás determinisztikus kimenetelekkel",
+          "points": 5,
+          "priority": "urgent",
+          "requirements": ["FR-603", "BR-13"],
+          "depends_on": ["E7-S1"],
+          "description": "A mock fizetési szolgáltatás kimenetele kizárólag a kártyaszám alapján determinisztikus, és minden kimenetelhez egyedi PSP hivatkozást (pspReference) ad. A viselkedés a specifikáció kimenetel-táblázatát követi: siker, elutasítás, feldolgozási hiba és időtúllépés. Minden hívás növekvő attemptNumber sorszámot kap.",
+          "acceptance": [
+            "A 4242424242424242 kártyaszám SIKERES kimenetelt ad, errorCode nélkül.",
+            "A 4000000000000002 ELUTASITOTT eredményt ad PAYMENT_DECLINED, a 4000000000009995 ELUTASITOTT eredményt PAYMENT_INSUFFICIENT_FUNDS hibakóddal.",
+            "A 4000000000000069 CARD_EXPIRED, a 4000000000000101 CARD_CVC_INVALID hibakódú ELUTASITOTT eredményt ad.",
+            "A 4000000000000119 FELDOLGOZASI_HIBA eredményt ad PAYMENT_PROCESSING_ERROR, a 4111111111111111 IDOTULLEPES eredményt ad PAYMENT_TIMEOUT hibakóddal.",
+            "Bármely más Luhn-érvényes kártyaszám SIKERES kimenetelt ad.",
+            "Minden kimenetelhez egyedi pspReference tartozik MOCK-<6 hexadecimális karakter> formátumban, és az attemptNumber foglalásonként 1-től növekszik."
+          ],
+          "dod": [
+            "A kimenetel-táblázat minden sora le van fedve automatizált teszttel.",
+            "A mock PSP külső hálózati hívást nem indít, teljesen lokális szimuláció.",
+            "A pspReference formátuma és egyedisége tesztelt.",
+            "A szolgáltatás az összes kimenetelnél ugyanazt a válaspszerkezetet adja vissza.",
+            "A kimenetelek és hibakódok szerepelnek az OpenAPI leírásban."
+          ]
+        },
+        {
+          "code": "E7-S4",
+          "title": "Sikeres fizetés feldolgozása",
+          "points": 8,
+          "priority": "urgent",
+          "requirements": ["FR-604", "BR-09"],
+          "depends_on": ["E7-S3"],
+          "description": "SIKERES PSP kimenetel esetén a foglalás FIZETVE állapotba kerül, minden érintett hely ELADOTT lesz, a jegyek azonnal kiállítódnak, és bevétel naplóbejegyzés készül. A művelet egyetlen tranzakcióban fut le, hogy részleges állapot ne maradjon. A zár (holdExpiresAt) elveszti jelentőségét, a helyek nem szabadulnak fel.",
+          "acceptance": [
+            "SIKERES kimenetel esetén a Booking állapota FIZETVE lesz, és a paidAt kitöltődik.",
+            "A foglalás minden érintett széke ELADOTT állapotba kerül a BR-01-nek megfelelően.",
+            "A sikeres fizetés után a foglalás összes jegyére Ticket jön létre ERVENYES állapotban.",
+            "A foglalás total összegével BEVETEL LedgerEntry készül; az 1. foglalásnál 25 500 Ft.",
+            "VISSZATERITVE, LEJART vagy LEMONDVA állapotú foglalás nem kerülhet FIZETVE állapotba; ilyen hívás BOOKING_WRONG_STATE hibakódot ad 409-es státusszal.",
+            "Ismételt sikeres feldolgozás nem hoz létre második BEVETEL bejegyzést és nem képez második jegyet."
+          ],
+          "dod": [
+            "A Booking állapotváltás, a helyek ELADOTT-ra állítása, a jegykiállítás és a LedgerEntry egyetlen adatbázis-tranzakcióban történik.",
+            "A tiltott átmenetek (pl. LEJART -> FIZETVE) tesztesettel lefedettek.",
+            "A pénzügyi napló összege egyezik a foglalás total értékével.",
+            "A folyamat hibája esetén nem marad részleges mentés (nincs FIZETVE foglalás jegyek nélkül).",
+            "A sikeres feldolgozás eredménye az OpenAPI leírásban dokumentált."
+          ]
+        },
+        {
+          "code": "E7-S5",
+          "title": "Sikertelen fizetés kezelése és újrapróbálás",
+          "points": 5,
+          "priority": "urgent",
+          "requirements": ["FR-605"],
+          "depends_on": ["E7-S3"],
+          "description": "Elutasítás, feldolgozási hiba vagy időtúllépés esetén a foglalás nem veszik el, hanem a zár lejártáig újrapróbálható marad. ELUTASITOTT és FELDOLGOZASI_HIBA esetén a Booking visszaáll ZAROLT-ra, IDOTULLEPES esetén FIZETESRE_VAR marad. A hiba oka (errorCode) a válaszban és a felületen is megjelenik.",
+          "acceptance": [
+            "ELUTASITOTT eredmény esetén a Booking visszaáll ZAROLT állapotba, a helyek zárolva maradnak, a holdExpiresAt nem változik.",
+            "FELDOLGOZASI_HIBA eredmény esetén a Booking visszaáll ZAROLT állapotba, és a helyek zárolva maradnak.",
+            "IDOTULLEPES eredmény esetén a Booking FIZETESRE_VAR állapotban marad, és a zár lejáratakor LEJART állapotba kerül, a helyek felszabadulnak.",
+            "A zár lejárta után indított újrapróbálás BOOKING_EXPIRED hibakódot ad 409-es státusszal.",
+            "Minden újrapróbálás növeli az attemptNumber értékét, és külön PaymentTransaction rekordot hoz létre.",
+            "A fizetési hiba után a felület jelzi a hiba okát, és a foglalás állapota megmarad."
+          ],
+          "dod": [
+            "A sikertelen kimenetelek állapot-visszaállítási szabályai automatizált teszttel lefedettek.",
+            "A zár lejáratát követő állapotváltás (FIZETESRE_VAR -> LEJART) és a helyek felszabadítása tesztelt.",
+            "A hiba oka és a hátralévő záróidő a felületen is megjelenik magyar és angol nyelven.",
+            "A sikertelen kísérletek nem módosítják a foglalás pénzügyi összegét.",
+            "A viselkedés megfelel a specifikáció 3.2 pontjának minden kimenetelre."
+          ]
+        },
+        {
+          "code": "E7-S6",
+          "title": "Fizetési kérés idempotenciája",
+          "points": 5,
+          "priority": "medium",
+          "requirements": ["FR-606", "BR-08"],
+          "depends_on": ["E7-S3"],
+          "description": "A fizetési kérés idempotens: azonos idempotencia kulccsal nem jön létre újabb tranzakció, hanem az első kérés eredménye adódik vissza. Az idempotencia kulcsot a kliens küldi, és a PaymentTransaction rekordon tárolódik. Ez védi a rendszert az ismételt, hálózati újrapróbálásból eredő dupla terhelés ellen.",
+          "acceptance": [
+            "Ugyanazzal az idempotencyKey-jel küldött ismételt kérés nem hoz létre új PaymentTransaction rekordot, hanem az első kérés eredményét adja vissza.",
+            "Ha az első kérés SIKERES volt, az ismételt hívás ugyanazt a választ adja, és nem keletkezik második BEVETEL bejegyzés.",
+            "Hiányzó idempotencyKey esetén a válasz VALIDATION_ERROR hibakód 400-as státusszal.",
+            "Különböző idempotencyKey-jel ugyanarra a foglalásra új fizetési kísérlet indul, növekvő attemptNumber értékkel.",
+            "Az ismételt kérés eredménye bitre azonos az első válasszal, beleértve a pspReference azonosítót is."
+          ],
+          "dod": [
+            "Az idempotencia kulcs egyedisége foglalásonként adatbázis-szinten kényszerített.",
+            "Két azonos kérés egyidejű elküldése esetén is pontosan egy tranzakció jön létre.",
+            "Az ismételt kérések kezelése automatizált teszttel lefedett.",
+            "Az idempotencia viselkedés az OpenAPI leírásban dokumentált.",
+            "Az ismételt kérés nem módosítja a Booking állapotát a már beállított értékhez képest."
+          ]
+        },
+        {
+          "code": "E7-S7",
+          "title": "Fizetési tranzakciók naplózása",
+          "points": 3,
+          "priority": "high",
+          "requirements": ["FR-607"],
+          "depends_on": ["E7-S3"],
+          "description": "Minden fizetési kísérlet PaymentTransaction rekordként naplózódik sorszámmal, a kártya utolsó 4 számjegyével és az eredménnyel. A napló append-only: módosítani nem, csak bővíteni lehet. A teljes kártyaszám soha nem kerül a naplóba vagy a válaszokba.",
+          "acceptance": [
+            "Minden fizetési kísérlet pontosan egy PaymentTransaction rekordot hoz létre.",
+            "A rekord tartalmazza a bookingId, amount, status, cardLast4, cardBrand, pspReference, attemptNumber, idempotencyKey és createdAt mezőket.",
+            "Sikertelen kísérlet esetén a rekord errorCode mezője a megfelelő katalógusbeli hibakódot tartalmazza (pl. PAYMENT_DECLINED).",
+            "A naplórekord csak létrehozható, nem módosítható és nem törölhető.",
+            "A teljes kártyaszám nem szerepel egyetlen naplórekordban vagy API válaszban sem, kizárólag a cardLast4.",
+            "Az 1. foglalás sikeres fizetése után egy rekord keletkezik attemptNumber=1 és cardLast4=4242 értékkel."
+          ],
+          "dod": [
+            "Az append-only jelleg adatbázis-szintű védelemmel (pl. tiltott update/delete) biztosított.",
+            "A cardLast4 és cardBrand minden kimenetelnél helyesen töltődik.",
+            "A napló az FR-811 szerinti admin foglalás-részletekben megjeleníthető.",
+            "A naplórekord mezői szerepelnek az OpenAPI leírásban.",
+            "A naplózás nem tartalmaz érzékeny kártyaadatot (full PAN, CVC)."
+          ]
+        },
+        {
+          "code": "E7-S8",
+          "title": "Fizetési hibák megjelenítése a felületen",
+          "points": 3,
+          "priority": "high",
+          "requirements": ["FR-608", "BR-14"],
+          "depends_on": ["E7-S5"],
+          "description": "A felhasználó a fizetési hibát a saját nyelvén, érthető üzenetben látja, miközben a foglalás nem veszik el. A hibakód nyelvfüggetlen és minden nyelven azonos, a megjelenített szöveg az Accept-Language fejléc szerint magyar vagy angol. A hibaüzenet az egységes hibaválasz-szerkezetet követi.",
+          "acceptance": [
+            "PAYMENT_DECLINED esetén a felület magyarul „A kártyát a bank elutasította.”, angolul „The card was declined by the bank.” üzenetet jelenít meg, azonos PAYMENT_DECLINED kóddal.",
+            "A PAYMENT_INSUFFICIENT_FUNDS, CARD_EXPIRED és CARD_CVC_INVALID hibák a saját nyelvű üzenetükkel jelennek meg.",
+            "A hibaválasz az error.code, error.message és error.messageEn mezőket tartalmazza az egységes szerkezet szerint.",
+            "A hiba után a foglalás és a hátralévő záróidő megmarad, az űrlap újrapróbálható.",
+            "Sikeres újrapróbálás után a korábbi hibaüzenet eltűnik a felületről.",
+            "Váratlan szerverhiba esetén a felület általános üzenetet mutat, stack trace vagy belső útvonal nélkül."
+          ],
+          "dod": [
+            "A megjelenített hibaüzenetek nyelvi erőforrásból származnak, nincs beégetett szöveg.",
+            "Az ugyanazon hibakódhoz tartozó hu/en üzenetek teszteltek.",
+            "A hibaüzenet nem tartalmaz technikai részleteket vagy belső azonosítókat a felhasználó számára.",
+            "A hibaállapot kezelése automatizált felületi teszttel lefedett.",
+            "A hibakód és a HTTP státusz nyelvfüggetlensége igazolt."
+          ]
+        }
+      ]
+    },
+    {
+      "code": "E8",
+      "title": "Jegykibocsátás és értesítések",
+      "goal": "A megvásárolt jegyek előállítása, letöltése és kiküldése. Az epic lefedi a jegyek kiállítását sikeres fizetés után, az egyedi és meg nem jósolható jegykódot, a QR-tartalmat, a PDF előállítást, a jogosultság-ellenőrzött letöltést, a nyilvános érvényesség-ellenőrzést, az e-mail értesítést, az újraküldést és a vásárlói „Jegyeim” oldalt.",
+      "stories": [
+        {
+          "code": "E8-S1",
+          "title": "Jegyek kiállítása sikeres fizetés után",
+          "points": 5,
+          "priority": "urgent",
+          "requirements": ["FR-701", "BR-09"],
+          "depends_on": ["E7-S4"],
+          "description": "Sikeres fizetés után minden megvásárolt jegyre külön Ticket jön létre. Ülőhelyes jegynél a jegy egy konkrét székhez (seatId) kötődik, állóhelyes jegynél seatId nélkül, a foglalási tétel darabszámának megfelelően. A jegyek ERVENYES állapotban, issuedAt időponttal jönnek létre, a foglalás jegydarabszámával megegyező számban.",
+          "acceptance": [
+            "Sikeres fizetés után minden megvásárolt jegyre külön Ticket rekord jön létre; 2 ülőhely vásárlása esetén pontosan 2 jegy.",
+            "Ülőhelyes jegy seatId mezője a foglaláshoz tartozó széket tartalmazza, állóhelyes jegynél a seatId üres.",
+            "A létrejövő jegyek statusa ERVENYES, és az issuedAt kitöltődik.",
+            "A kiállított jegyek száma megegyezik a foglalás jegydarabszámával, egyezés hiányában a folyamat hibát jelez.",
+            "Nem FIZETVE állapotú foglalásra nem jön létre jegy; ilyen hívás nem hoz létre Ticket rekordot.",
+            "A kiállítás a fizetés feldolgozásával együtt, egyszer és tranzakcionálisan fut le."
+          ],
+          "dod": [
+            "A jegykiállítás a fizetés-feldolgozás tranzakciójának része, részleges kiállítás nem lehetséges.",
+            "Az 1. foglalás (Erkély A: A1, A2) sikeres fizetése után pontosan 2 ERVENYES jegy jön létre.",
+            "A jegyhez tartozó bookingId és ticketTypeId helyesen töltődik.",
+            "A kiállítás automatizált teszttel lefedett ülőhelyes és állóhelyes esetre is.",
+            "A kiállított jegyek megjelennek a foglalás részleteinél (FR-709)."
+          ]
+        },
+        {
+          "code": "E8-S2",
+          "title": "Egyedi, meg nem jósolható jegykód generálása",
+          "points": 2,
+          "priority": "urgent",
+          "requirements": ["FR-702", "BR-30"],
+          "depends_on": ["E8-S1"],
+          "description": "Minden jegy egyedi, meg nem jósolható, legalább 12 karakteres kódot kap, amely a QR-tartalom alapját is képezi. A kód kriptográfiailag véletlen forrásból származik, és ütközés esetén újragenerálódik. A jegyhez a qrPayload mező JGY-TICKET:<code> formátumban tárolódik.",
+          "acceptance": [
+            "A jegykód legalább 12 karakter hosszú, például JG7F4K2M9QX1.",
+            "A jegykód minden jegyre egyedi; ütközés esetén a rendszer új kódot generál.",
+            "A jegykód meg nem jósolható, kriptográfiailag véletlen forrásból származik.",
+            "A jegy qrPayload mezője pontosan JGY-TICKET:<code> formátumú.",
+            "Két egymás után kiállított jegy kódja nem azonos.",
+            "12 karakternél rövidebb kód nem kerülhet kiállításra; a generátor ilyen hosszt nem állít elő."
+          ],
+          "dod": [
+            "A jegykód egyedisége adatbázis-szintű egyedi megszorítással biztosított.",
+            "A generátor legalább 12 karaktert és elegendő entrópiát biztosít.",
+            "Az ütközéskezelés (újragenerálás) automatizált teszttel lefedett.",
+            "A qrPayload formátuma és a code illeszkedése tesztelt.",
+            "A jegykód nem származtatható más jegyek kódjából."
+          ]
+        },
+        {
+          "code": "E8-S3",
+          "title": "PDF jegy előállítása",
+          "points": 5,
+          "priority": "high",
+          "requirements": ["FR-703"],
+          "depends_on": ["E8-S1"],
+          "description": "A jegy PDF formátumban előállítható és letölthető. A PDF tartalmazza az esemény nevét, idejét, helyszínét, a helyet (szektor/sor/szék vagy állóhely), az árat és a jegykódot. A letöltési válasz application/pdf tartalomtípussal érkezik, és a PDF a jegykódot olvasható szövegként is tartalmazza.",
+          "acceptance": [
+            "A PDF tartalmazza az esemény nevét, kezdési idejét, a helyszín nevét, a helyet, az árat és a jegykódot.",
+            "Az 1. esemény Erkély A, A sor 1. székére szóló jegy PDF-je tartalmazza a Budapest Rock Fesztivál 2026 nevet, az Erkély A szektort, az A sort és az 1. széket.",
+            "A PDF letöltésének válasz tartalomtípusa application/pdf.",
+            "A PDF a jegykódot olvasható szövegként is feltünteti, nem csak QR-ként.",
+            "Nem létező jegyre indított PDF kérés TICKET_NOT_FOUND hibakódot ad 404-es státusszal.",
+            "Az állóhelyes jegy PDF-je a szektor nevét és az állóhely megjelölést tartalmazza székazonosító nélkül."
+          ],
+          "dod": [
+            "A PDF-generálás minden szükséges esemény- és foglalásadatot a szerveroldali forrásból vesz.",
+            "A PDF magyar és angol nyelven is előállítható a címzett locale-ja szerint.",
+            "A PDF előállítása és letöltése automatizált teszttel lefedett.",
+            "A letöltési végpont szerepel az OpenAPI leírásban.",
+            "A PDF nem tartalmaz érzékeny adatot (teljes kártyaszám, CVC)."
+          ]
+        },
+        {
+          "code": "E8-S4",
+          "title": "QR-kód megjelenítése a jegyen",
+          "points": 3,
+          "priority": "high",
+          "requirements": ["FR-704"],
+          "depends_on": ["E8-S2"],
+          "description": "A PDF-en és a felületen a jegykódot tartalmazó QR-kód jelenik meg. A QR-tartalom a jegy qrPayload értéke (JGY-TICKET:<code>), amelyből a nyilvános ellenőrző végpont az érvényességet megállapítja. Visszavont jegy QR-je érvénytelen eredményt ad.",
+          "acceptance": [
+            "A jegyhez tartozó QR-kód a qrPayload értékét, azaz JGY-TICKET:<code> alakú tartalmat kódolja.",
+            "A QR-kód megjelenik a PDF jegyen és a vásárlói felület jegyén is.",
+            "A QR-kódból beolvasott érték a nyilvános ellenőrző végponttal ellenőrizhető.",
+            "Érvényes jegy QR-ellenőrzése az eseményt és az érvényességet adja vissza.",
+            "VISSZAVONT jegy QR-ellenőrzése érvénytelen eredményt ad TICKET_REVOKED jelöléssel.",
+            "A QR-tartalom nem tartalmaz a jegykódon kívül más érzékeny adatot."
+          ],
+          "dod": [
+            "A QR-tartalom és a jegy qrPayload mezője minden esetben megegyezik.",
+            "A QR előállítása hibajavító szintű, a PDF-en és a felületen jól olvasható.",
+            "A QR és a nyilvános ellenőrzés összekapcsolása automatizált teszttel lefedett.",
+            "A visszavont jegy QR-kezelése tesztelt.",
+            "A QR megjelenítése akadálymentes (a jegykód szövegként is elérhető)."
+          ]
+        },
+        {
+          "code": "E8-S5",
+          "title": "Jegy letöltése jogosultság-ellenőrzéssel",
+          "points": 3,
+          "priority": "high",
+          "requirements": ["FR-705", "BR-20"],
+          "depends_on": ["E8-S3"],
+          "description": "A jegyet kizárólag a foglalás tulajdonosa (vagy admin) töltheti le. A jogosultság-ellenőrzés szerveroldalon történik, nem pusztán a felületi gomb elrejtésével. Jogosulatlan kérés elutasítása az egységes hibaválasz-szerkezet szerint történik.",
+          "acceptance": [
+            "A foglalás tulajdonosa a saját jegyeit sikeresen letöltheti.",
+            "Admin bármely jegyet letölthet.",
+            "Más bejelentkezett vásárló letöltési kísérlete FORBIDDEN hibakódot ad 403-as státusszal.",
+            "Bejelentkezés nélküli letöltési kísérlet UNAUTHENTICATED hibakódot ad 401-es státusszal.",
+            "Nem létező jegykódra indított letöltés TICKET_NOT_FOUND hibakódot ad 404-es státusszal.",
+            "Visszavont jegy letöltése TICKET_REVOKED hibakódot ad 409-es státusszal."
+          ],
+          "dod": [
+            "A jogosultság-ellenőrzés szerveroldali, a végpont védett.",
+            "A letöltési végpont szerepel az OpenAPI leírásban a 401, 403, 404 és 409 hibakódokkal.",
+            "A jogosultság-ellenőrzés automatizált teszttel lefedett több szerepkörre.",
+            "A letöltés nem szivárogtatja ki más felhasználó adatait.",
+            "A hibaválasz megfelel az egységes formátumnak magyar és angol nyelven."
+          ]
+        },
+        {
+          "code": "E8-S6",
+          "title": "Jegy érvényességének nyilvános ellenőrzése",
+          "points": 3,
+          "priority": "medium",
+          "requirements": ["FR-706"],
+          "depends_on": ["E8-S2"],
+          "description": "A jegykód alapján egy nyilvános, bejelentkezés nélkül elérhető végpont megválaszolja, hogy a jegy érvényes-e, és melyik eseményre szól. A végpont nem ad ki személyes adatot a vásárlóról. A válasz az érvényesség mellett az esemény nevét és idejét tartalmazza.",
+          "acceptance": [
+            "A végpont bejelentkezés nélkül elérhető, és jegykód alapján válaszol.",
+            "Érvényes jegyre a válasz érvényes állapotot és az esemény nevét, valamint idejét adja vissza.",
+            "VISSZAVONT jegyre a válasz érvénytelen állapotot ad TICKET_REVOKED jelöléssel.",
+            "Nem létező jegykódra a végpont TICKET_NOT_FOUND hibakódot ad 404-es státusszal.",
+            "A válasz nem tartalmazza a vásárló nevét, e-mail címét vagy más személyes adatát.",
+            "A végpont nem teszi lehetővé a jegy letöltését vagy a jegy adatainak módosítását."
+          ],
+          "dod": [
+            "A nyilvános végpont szerepel az OpenAPI leírásban a megadott hibakódokkal.",
+            "A végpont kizárólag a jegykódra és az eseményre vonatkozó, nem személyes adatokat adja vissza.",
+            "Az érvényes, visszavont és nem létező esetek automatizált teszttel lefedettek.",
+            "A végpont terhelés mellett is gyorsan válaszol, külön hitelesítés nélkül.",
+            "A visszavont jegy (BR-18) esetén a QR-érvénytelenség konzisztensen érvényesül."
+          ]
+        },
+        {
+          "code": "E8-S7",
+          "title": "Értesítő e-mail küldése vásárlás után",
+          "points": 5,
+          "priority": "urgent",
+          "requirements": ["FR-707"],
+          "depends_on": ["E8-S3"],
+          "description": "Sikeres vásárlásnál a vásárló e-mailt kap a jegyekkel vagy letöltési hivatkozással, MailHog-ra kézbesítve. A kiküldés EmailNotification rekordként naplózódik JEGY_KIIALLITVA sablonnal. A levél nyelve a címzett locale beállítása szerint magyar vagy angol.",
+          "acceptance": [
+            "Sikeres fizetés után a vásárló e-mailt kap a jegyekkel vagy a letöltési hivatkozással, MailHog-ra kézbesítve.",
+            "A kiküldésről EmailNotification rekord készül template=JEGY_KIIALLITVA és status=ELKULDVE értékkel.",
+            "A levél nyelve a címzett locale-ja szerint alakul; a buyer@jegyzo.local (en) felhasználó angol nyelvű levelet kap.",
+            "A levél tartalmazza az esemény nevét, idejét, a jegyek kódjait és a letöltési hivatkozást.",
+            "Sikertelen kézbesítés esetén az EmailNotification statusa HIBA, és az errorMessage kitöltődik, a fizetés ettől nem lesz sikertelen.",
+            "A levél nem tartalmaz teljes kártyaszámot vagy más érzékeny fizetési adatot."
+          ],
+          "dod": [
+            "Az e-mail küldés lokális (MailHog) szimuláció, külső szolgáltatás nélkül.",
+            "A sablon magyar és angol változata is elkészül és tesztelt.",
+            "A kiküldés és a naplózás automatizált teszttel lefedett.",
+            "A levél tartalma a jegyek aktuális állapotát tükrözi.",
+            "Az e-mail küldés nem blokkolja a sikeres fizetés azonnali feldolgozását (BR-09)."
+          ]
+        },
+        {
+          "code": "E8-S8",
+          "title": "Jegy e-mail újraküldése",
+          "points": 2,
+          "priority": "low",
+          "requirements": ["FR-708"],
+          "depends_on": ["E8-S7"],
+          "description": "A vásárló kérheti a saját foglalásához tartozó jegyek e-mail újraküldését. Az újraküldés új EmailNotification rekordot hoz létre, és nem módosítja a jegyek kódját vagy állapotát. Csak a foglalás tulajdonosa kezdeményezheti.",
+          "acceptance": [
+            "A vásárló a saját foglalásához tartozó jegyek e-mail újraküldését kérheti.",
+            "Az újraküldés új EmailNotification rekordot hoz létre template=JEGY_KIIALLITVA értékkel.",
+            "Más felhasználó foglalására indított újraküldés FORBIDDEN hibakódot ad 403-as státusszal.",
+            "Nem létező foglalásra indított újraküldés BOOKING_NOT_FOUND hibakódot ad 404-es státusszal.",
+            "Nem fizetett (pl. ZAROLT) foglalásra indított újraküldés BOOKING_WRONG_STATE hibakódot ad 409-es státusszal.",
+            "Az újraküldés nem módosítja a jegyek code és status értékét."
+          ],
+          "dod": [
+            "Az újraküldés a korábbival azonos tartalmú levelet állít elő a címzett aktuális locale-ja szerint.",
+            "A tulajdonos-ellenőrzés szerveroldali.",
+            "Az újraküldés és annak naplózása automatizált teszttel lefedett.",
+            "A végpont szerepel az OpenAPI leírásban a 403, 404 és 409 hibakódokkal.",
+            "Az újraküldés nem indít új fizetési vagy jegykiállítási folyamatot."
+          ]
+        },
+        {
+          "code": "E8-S9",
+          "title": "„Jegyeim” oldal",
+          "points": 5,
+          "priority": "urgent",
+          "requirements": ["FR-709", "FR-107"],
+          "depends_on": ["E8-S1", "E2-S5"],
+          "description": "A bejelentkezett vásárló a „Jegyeim” oldalon látja a saját foglalásait állapot szerint, és onnan megnyithatja a jegyeket. A foglalás részleteinél a jegyek kóddal, állapottal és letöltési lehetőséggel jelennek meg. Az oldal kizárólag a bejelentkezett felhasználó saját adatait mutatja.",
+          "acceptance": [
+            "A bejelentkezett vásárló a saját foglalásait állapot szerint listázva látja.",
+            "A foglalás részleteinél minden jegy kóddal, állapottal és letöltési lehetőséggel jelenik meg.",
+            "A foglalás tulajdonosa csak a saját jegyeit látja; más felhasználó jegyei nem jelennek meg (BR-20).",
+            "A jegyek az esemény aktuális adatait (név, kezdés, helyszín) mutatják.",
+            "VISSZAVONT jegy VISSZAVONT állapottal jelenik meg, és nem tölthető le sikeresen (TICKET_REVOKED).",
+            "Bejelentkezés nélküli hozzáférés UNAUTHENTICATED hibakódot ad 401-es státusszal."
+          ],
+          "dod": [
+            "Az oldal a saját foglalásokat és jegyeket szerveroldali szűréssel adja vissza.",
+            "A foglalás- és jegylista a seed adatkészleten (4. felhasználó: 1., 2., 6., 7., 8., 9. foglalás) konzisztens.",
+            "Az oldal minden szövege nyelvi erőforrásból származik, magyar és angol nyelven is teljes.",
+            "A jegyállapotok és a letöltési lehetőség összhangban vannak a jegyek tényleges állapotával.",
+            "A hozzáférés-ellenőrzés és a megjelenítés automatizált teszttel lefedett."
+          ]
+        }
+      ]
+    }
+  ]
+}

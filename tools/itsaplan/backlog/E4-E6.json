@@ -1,0 +1,619 @@
+{
+  "epics": [
+    {
+      "code": "E4",
+      "title": "Helyszín és ülőhelytérkép",
+      "goal": "A helyszínek és fizikai szerkezetük (szektor, sor, szék) nyilvántartása, valamint a vásárlói ülőhelytérkép, amelyen a szabad, zárolt és eladott székek láthatók és kijelölhetők. Az epic adja az események helyszín-alapját és a helyválasztás teljes felületét.",
+      "stories": [
+        {
+          "code": "E4-S1",
+          "title": "Helyszín nyilvántartása (létrehozás, szerkesztés, aktiválás)",
+          "points": 5,
+          "priority": "high",
+          "requirements": [
+            "FR-301",
+            "BR-22"
+          ],
+          "depends_on": [
+            "E2-S7"
+          ],
+          "description": "Admin vagy szervező helyszínt hoz létre, szerkeszt és aktív/inaktív állapotba állít. A Venue mezői: name (3–120 karakter), city (2–60), address (5–200), opcionális description (max. 2000), isActive, valamint a számított totalCapacity. Inaktív helyszínre új esemény nem hozható létre (BR-22), de a meglévő események változatlanok maradnak.",
+          "acceptance": [
+            "Új helyszín létrehozása akkor sikeres, ha a name 3–120, a city 2–60 és az address 5–200 karakter hosszú, és a létrejött Venue isActive értéke alapból true.",
+            "A Venue.totalCapacity az ülőhelyes szektorok székszáma és az állóhelyes szektorok capacity értékének összege, és a szektorok módosításakor újraszámolódik.",
+            "Hiányzó vagy 3 karakternél rövidebb name esetén a válasz VALIDATION_ERROR hibakód 400-as státusszal, és nem jön létre Venue.",
+            "A 2000 karakternél hosszabb description VALIDATION_ERROR hibakódot ad 400-as státusszal.",
+            "isActive = false helyszínre új esemény létrehozása VENUE_INACTIVE hibakóddal 409-es státusszal elutasításra kerül, a meglévő események nem változnak.",
+            "Nem létező azonosítójú helyszín szerkesztése NOT_FOUND hibakódot ad 404-es státusszal."
+          ],
+          "dod": [
+            "A helyszín CRUD végpontok szerepelnek az OpenAPI leírásban a megadott mezőmegszorításokkal és hibakódokkal.",
+            "Az adatbázis-migráció tartalmazza a Venue táblát a name, city, address, description, isActive mezőkkel.",
+            "A BR-22 (inaktív helyszín) szerinti viselkedés automatizált teszttel fedett.",
+            "A végpontok szerveroldali jogosultság-ellenőrzést végeznek: csak ADMIN vagy SZERVEZO hívhatja, VASARLO esetén FORBIDDEN.",
+            "A validációs hibaüzenetek magyarul és angolul is megjelennek (BR-14)."
+          ]
+        },
+        {
+          "code": "E4-S2",
+          "title": "Szektorok, sorok és székek definiálása",
+          "points": 8,
+          "priority": "urgent",
+          "requirements": [
+            "FR-302"
+          ],
+          "depends_on": [
+            "E4-S1"
+          ],
+          "description": "Ülőhelyes szektornál (Section.kind = ULOHELYES) a sorok és a soronkénti székek megadásával a rendszer legenerálja a Row és Seat rekordokat; soronként eltérő székszám is megadható. A Section.position a megjelenítési sorrendet adja. Az ülőhelyes szektor kapacitását a székek száma adja, a szék címkéje a sor és a szám összefűzése (pl. A12).",
+          "acceptance": [
+            "6 sor (A–F) és soronként 50 szék megadásakor a rendszer 300 Seat rekordot generál, amelyek címkéje A1-től F50-ig tart.",
+            "A szektorok a Section.position, a sorok a Row.position, a székek a Seat.number szerint növekvő sorrendben jelennek meg.",
+            "Ülőhelyes szektorhoz megadott capacity érték figyelmen kívül marad, a kapacitás a székek számából számított érték.",
+            "Sor megadása nélkül (0 sor) a szektor létrehozása VALIDATION_ERROR hibakódot ad 400-as státusszal.",
+            "Soronként eltérő székszám megadásakor (pl. első sor 20, második sor 25 szék) a generált Seat rekordok száma a soronkénti darabszámok összege.",
+            "Már publikált esemény helyszínének későbbi székbővítése nem érinti a korábban létrehozott SeatState rekordokat (BR-26)."
+          ],
+          "dod": [
+            "A Row és Seat entitások, valamint a hozzájuk tartozó generálási logika migrációban és seedben megjelenik.",
+            "A generált székek címkéje szektoron belül egyedivé tesztelten.",
+            "Az FR-302 szerinti soronkénti eltérő székszám kezelése automatizált teszttel fedett.",
+            "A végpont szerepel az OpenAPI leírásban, és csak ADMIN vagy SZERVEZO hívhatja.",
+            "A BR-26 szerinti elkülönülés (publikált esemény helyei változatlanok) teszttel igazolt."
+          ]
+        },
+        {
+          "code": "E4-S3",
+          "title": "Állóhely-kapacitás megadása",
+          "points": 2,
+          "priority": "high",
+          "requirements": [
+            "FR-303"
+          ],
+          "depends_on": [
+            "E4-S1"
+          ],
+          "description": "Állóhelyes szektorhoz (Section.kind = ALLOHELYES) fix capacity adható meg, amely 1-nél nem kisebb egész szám. Az állóhelyes szektornál Row és Seat nem jön létre; a foglalás darabszám alapján történik. A capacity a szektor jegytípusának kapacitás-alapja.",
+          "acceptance": [
+            "Állóhelyes szektor létrehozása capacity = 400 értékkel sikeres, és a Venue.totalCapacity értéke 400-zal nő.",
+            "0 vagy negatív capacity megadása VALIDATION_ERROR hibakódot ad 400-as státusszal.",
+            "Állóhelyes szektorhoz tartozó Row vagy Seat rekord nem jön létre.",
+            "Hiányzó capacity mező esetén az állóhelyes szektor létrehozása VALIDATION_ERROR hibakóddal elutasításra kerül.",
+            "A 400 kapacitású Küzdőtér szektor az 1. helyszín totalCapacity értékébe beszámít."
+          ],
+          "dod": [
+            "A Section.capacity feltételes kötelezettsége (ALLOHELYES esetén kötelező) a szerveroldali validációban megvalósul.",
+            "A végpont szerepel az OpenAPI leírásban a hibakódokkal.",
+            "Az állóhelyes szektor kapacitásának megadása automatizált teszttel fedett.",
+            "A seed adatkészlet állóhelyes szektorai (Küzdőtér 400, Fedélzet 500) helyesen töltődnek be."
+          ]
+        },
+        {
+          "code": "E4-S4",
+          "title": "Ülőhelytérkép megjelenítése",
+          "points": 8,
+          "priority": "urgent",
+          "requirements": [
+            "FR-304"
+          ],
+          "depends_on": [
+            "E4-S2",
+            "E3-S9"
+          ],
+          "description": "A vásárlói felület az esemény helyszínének ülőhelyes szektorait térképszerűen jeleníti meg szektoronként, soronként és székenként a Section.position, Row.position és Seat.number szerinti sorrendben. A térkép az esemény részletei oldalról nyílik, és a székek állapotát a SeatState alapján mutatja.",
+          "acceptance": [
+            "A Budapest Rock Fesztivál 2026 esemény térképén az Erkély A és Erkély B szektorok 6-6 sorral és soronként 50 székkel jelennek meg.",
+            "A székek a Seat.label (pl. A12) szerinti sorrendben, sorfolytonosan jelennek meg.",
+            "A térkép az eseményhez tartozó összes SeatState állapotát megjeleníti, a hiányzó állapotú szék SZABAD jelölést kap.",
+            "Nem létező esemény azonosítójával a térkép EVENT_NOT_FOUND hibakódot ad 404-es státusszal.",
+            "Az A38 Hajó eseményénél (Fedélzet, állóhelyes) a térkép nem jelenít meg székszintű szektorokat."
+          ],
+          "dod": [
+            "A térkép az adott esemény helyszínének szerkezetét a Section.position, Row.position és Seat.number szerint rendezi.",
+            "A szék állapotát a SeatState rekordokból olvassa, nem a helyszín definíciójából.",
+            "A térkép 100 000 szék mellett is a p95 < 800 ms válaszidőn belül tölt (NFR-04).",
+            "A szék állapotát színen kívül minta is jelöli (NFR-14).",
+            "A megjelenítés magyar és angol nyelven is teljes (NFR-09)."
+          ]
+        },
+        {
+          "code": "E4-S5",
+          "title": "Szabad, zárolt és eladott székek jelölése",
+          "points": 3,
+          "priority": "urgent",
+          "requirements": [
+            "FR-305",
+            "BR-01"
+          ],
+          "depends_on": [
+            "E4-S4"
+          ],
+          "description": "A térkép minden széket a SeatState.state értéke alapján jelöl: SZABAD (kiválasztható), ZAROLT (más foglalása zárolta, nem választható), ELADOTT (nem választható). A zárolt és eladott szék kijelölése SEAT_NOT_AVAILABLE vagy SEAT_TAKEN hibát ad.",
+          "acceptance": [
+            "A térkép a SeatState.state = SZABAD székeket kiválaszthatóként, a ZAROLT és ELADOTT székeket nem kiválaszthatóként jelöli.",
+            "A Budapest Rock Fesztivál 2026 eseményen az Erkély A szektor A1 és A2 széke ELADOTT jelölést kap, a többi szék SZABAD.",
+            "Ugyanaz a szék eseményenként külön állapotot kap: egy másik eseményen ugyanaz a szék SZABAD lehet.",
+            "Zárolt szék kijelölési kísérletére a válasz SEAT_TAKEN hibakód 409-es státusszal.",
+            "Eladott szék kijelölési kísérletére a válasz SEAT_NOT_AVAILABLE hibakód 409-es státusszal.",
+            "A 6. esemény (LEZAJLT) térképén a B5 szék ELADOTT jelölést kap."
+          ],
+          "dod": [
+            "A szék állapotát a térkép a SeatState-ből olvassa, és a három állapotot egyértelműen megkülönbözteti.",
+            "A zárolt és eladott szék kijelölése szerveroldalon is elutasításra kerül, nem csak a felületen tiltott.",
+            "A BR-01 szerinti jelölés automatizált teszttel fedett.",
+            "Az állapotjelölés színvak-barát (minta és szöveg egyaránt) (NFR-14).",
+            "A jelölések magyar és angol felirattal is megjelennek (NFR-09)."
+          ]
+        },
+        {
+          "code": "E4-S6",
+          "title": "Székek kijelölése és kijelölés törlése",
+          "points": 5,
+          "priority": "urgent",
+          "requirements": [
+            "FR-306",
+            "BR-29"
+          ],
+          "depends_on": [
+            "E4-S4"
+          ],
+          "description": "A vásárló a térképen több szabad széket is kijelölhet, a kijelölést egyenként vagy összesen törölheti. Egy foglalás legalább 1 és legfeljebb 20 jegyet tartalmazhat (BR-29). A kijelölés véglegesítése foglalást hoz létre.",
+          "acceptance": [
+            "A vásárló egyszerre több szabad széket kijelölhet, és a kijelölt székek listája és darabszáma a felületen látszik.",
+            "Egy kijelölt szék kijelölése egyenként törölhető, és a szék visszakerül a SZABAD állapotú, kiválasztható székek közé.",
+            "20 szék kijelölése engedett, a 21. szék kijelölési kísérlete BOOKING_TOO_MANY_TICKETS hibakódot ad 400-as státusszal.",
+            "0 kijelölt székkel a foglalás véglegesítése BOOKING_EMPTY hibakódot ad 400-as státusszal.",
+            "Már nem SZABAD állapotú szék kijelölése elutasításra kerül.",
+            "A kijelölés törlése nem érinti a többi kijelölt széket."
+          ],
+          "dod": [
+            "A kijelölés állapota a foglalás létrehozásáig a kliensen marad, a szerver csak a véglegesítéskor ellenőrzi a székek állapotát.",
+            "A BR-29 szerinti 1–20 korlát mind a kliensen, mind a szerveroldalon érvényesül.",
+            "A kijelölés és törlés műveletek automatizált teszttel fedettek.",
+            "A kijelölt székek és az összeg előnézete magyar és angol felirattal jelenik meg (NFR-09)."
+          ]
+        },
+        {
+          "code": "E4-S7",
+          "title": "Térkép állapotának frissítése",
+          "points": 3,
+          "priority": "medium",
+          "requirements": [
+            "FR-307"
+          ],
+          "depends_on": [
+            "E4-S5"
+          ],
+          "description": "A térkép a foglalás vagy fizetés után, illetve oldal-újratöltéskor a friss SeatState állapotot mutatja, így a vásárló az időközben zárolt vagy eladott székeket is láthatja. Az állapot lekérdezése esemény-specifikus.",
+          "acceptance": [
+            "Sikeres foglalás után a térkép újratöltésekor a zárolt székek ZAROLT jelölést kapnak.",
+            "Sikeres fizetés után a térkép újratöltésekor a megvásárolt székek ELADOTT jelölést kapnak.",
+            "A már megnyitott térkép a foglalás vagy fizetés után kézi újratöltés nélkül is frissíthető a friss állapotra.",
+            "A zár lejárta után a térkép újratöltésekor a felszabadult székek ismét SZABAD jelölést kapnak.",
+            "A térkép állapot-lekérdezése nem létező eseményre EVENT_NOT_FOUND hibakódot ad 404-es státusszal."
+          ],
+          "dod": [
+            "Az állapotfrissítés esemény-specifikus végpontot használ, amely a SeatState aktuális értékét adja vissza.",
+            "A térkép a foglalás vagy fizetés visszajelzése után automatikusan újratölti az állapotot.",
+            "Az FR-307 szerinti frissítés automatizált teszttel fedett.",
+            "A frissítés során az adatkonzisztencia (NFR-15) megmarad."
+          ]
+        }
+      ]
+    },
+    {
+      "code": "E5",
+      "title": "Jegytípusok és árazás",
+      "goal": "Egy eseményhez szektoronként pontosan egy jegytípus definiálása árral, vásárlói limittel és értékesítési ablakkal, valamint a jegytípusok aktiválása és a legkisebb elérhető ár megjelenítése a katalógusban.",
+      "stories": [
+        {
+          "code": "E5-S1",
+          "title": "Jegytípus létrehozása eseményhez és szektorhoz",
+          "points": 5,
+          "priority": "urgent",
+          "requirements": [
+            "FR-401",
+            "BR-24",
+            "BR-28"
+          ],
+          "depends_on": [
+            "E4-S2",
+            "E9-S1"
+          ],
+          "description": "Egy eseményhez a helyszín egy szektorához pontosan egy TicketType hozható létre (BR-24): name (2–40), price (0–500 000 közötti egész HUF), maxPerUser (1–20, alapból 8), capacity csak ALLOHELYES szektornál kötelező, isActive. Ülőhelyes jegy ára a szék szektorához tartozó jegytípus ára (BR-28).",
+          "acceptance": [
+            "Jegytípus létrehozása az eseményhez és egy szektorhoz sikeres, ha a name 2–40 karakter és a price 0–500 000 közötti egész szám.",
+            "Ugyanahhoz az eseményhez és szektorhoz második jegytípus létrehozása SECTION_ALREADY_HAS_TICKET_TYPE hibakódot ad 409-es státusszal.",
+            "Állóhelyes szektorhoz capacity nélkül a létrehozás VALIDATION_ERROR hibakódot ad 400-as státusszal.",
+            "0-nál kisebb vagy 500 000-nél nagyobb price megadása VALIDATION_ERROR hibakódot ad 400-as státusszal.",
+            "Nem az esemény helyszínéhez tartozó szektorral a létrehozás VALIDATION_ERROR hibakódot ad 400-as státusszal.",
+            "A Budapest Rock Fesztivál 2026 esemény Erkély A szektorához létrehozott jegytípus price = 12 500 és maxPerUser = 8 értékkel jön létre."
+          ],
+          "dod": [
+            "A TicketType entitás és a BR-24 szerinti egyediség adatbázis-szintű megkötéssel védett.",
+            "A price egész szám validációja (BR-15) megvalósul.",
+            "A végpont az OpenAPI leírásban szerepel a hibakódokkal.",
+            "A BR-28 szerinti szektor–jegytípus kapcsolat automatizált teszttel fedett.",
+            "A végpontot csak ADMIN vagy SZERVEZO hívhatja, VASARLO esetén FORBIDDEN."
+          ]
+        },
+        {
+          "code": "E5-S2",
+          "title": "Ár és vásárlói limit megadása",
+          "points": 3,
+          "priority": "high",
+          "requirements": [
+            "FR-402",
+            "BR-04",
+            "BR-15"
+          ],
+          "depends_on": [
+            "E5-S1"
+          ],
+          "description": "A jegytípus price egész szám HUF-ban (0–500 000), a maxPerUser 1–20 közötti egész, amely egy felhasználóra és eseményre vonatkozik; alapértéke 8 (BR-04). Az ár és a limit módosítható, de a limitek a meglévő foglalásokra nem hatnak visszamenőleg.",
+          "acceptance": [
+            "A price = 12 500 és maxPerUser = 8 értékek mentése sikeres, és az értékek a jegytípus adataiban megjelennek.",
+            "maxPerUser = 21 megadása VALIDATION_ERROR hibakódot ad 400-as státusszal.",
+            "maxPerUser = 0 megadása VALIDATION_ERROR hibakódot ad 400-as státusszal.",
+            "Nem egész price (pl. 12 500,5) megadása VALIDATION_ERROR hibakódot ad 400-as státusszal.",
+            "maxPerUser megadása nélkül a jegytípus alapértelmezett maxPerUser = 8 értékkel jön létre.",
+            "A price és a maxPerUser módosítása nem változtatja meg a már létrehozott Booking rekordok összegét."
+          ],
+          "dod": [
+            "A price és maxPerUser validáció (BR-15, BR-04) szerveroldalon megvalósul.",
+            "A maxPerUser alapértéke 8, ha a mező nincs megadva.",
+            "A végpont az OpenAPI leírásban szerepel a hibakódokkal.",
+            "Az FR-402 szerinti viselkedés automatizált teszttel fedett.",
+            "A pénzösszeg megjelenítése ezer-elválasztóval, magyar és angol formátumban történik (BR-15)."
+          ]
+        },
+        {
+          "code": "E5-S3",
+          "title": "Értékesítési ablak kezelése",
+          "points": 3,
+          "priority": "high",
+          "requirements": [
+            "FR-403",
+            "BR-05",
+            "BR-23"
+          ],
+          "depends_on": [
+            "E5-S1"
+          ],
+          "description": "A jegytípushoz salesStartAt és salesEndAt adható meg; ha nincs megadva, az esemény értékesítési ablaka érvényes. Az értékesítés a két ablak metszetében lehetséges (BR-05), az ablakra salesStartAt < salesEndAt ≤ startsAt teljesül (BR-23).",
+          "acceptance": [
+            "A jegytípus értékesítési ablaka akkor érvényes, ha salesStartAt < salesEndAt ≤ az esemény startsAt értéke.",
+            "salesEndAt > startsAt esetén a mentés VALIDATION_ERROR hibakódot ad 400-as státusszal.",
+            "salesStartAt ≥ salesEndAt esetén a mentés VALIDATION_ERROR hibakódot ad 400-as státusszal.",
+            "Értékesítési ablak nélküli jegytípusra az esemény ablaka érvényes; azon kívüli időpontban a vásárlás SALES_WINDOW_CLOSED hibakódot ad 409-es státusszal.",
+            "Az esemény ablaka és a jegytípus ablaka közös metszetén kívüli vásárlási kísérlet SALES_WINDOW_CLOSED hibakódot ad 409-es státusszal.",
+            "A jegytípus ablaka szűkítheti, de nem bővítheti az esemény értékesítési ablakát."
+          ],
+          "dod": [
+            "A BR-05 és BR-23 szerinti ablaklogika szerveroldalon érvényesül.",
+            "Az értékesítési ablak a jegytípus és az esemény ablaka közötti metszetként kerül kiértékelésre.",
+            "A végpont az OpenAPI leírásban szerepel a hibakódokkal.",
+            "Az FR-403 szerinti viselkedés automatizált teszttel fedett."
+          ]
+        },
+        {
+          "code": "E5-S4",
+          "title": "Jegytípus aktiválása és deaktiválása",
+          "points": 3,
+          "priority": "medium",
+          "requirements": [
+            "FR-404",
+            "BR-25"
+          ],
+          "depends_on": [
+            "E5-S1"
+          ],
+          "description": "A jegytípus isActive állapota módosítható; inaktív jegytípus nem vásárolható (BR-25), de a már kiállított jegyek érvényesek maradnak. Inaktív jegytípusra indított foglalás TICKET_TYPE_INACTIVE hibát ad.",
+          "acceptance": [
+            "Aktív jegytípusból a foglalás létrehozása sikeres.",
+            "isActive = false értékre állított jegytípusra indított foglalás TICKET_TYPE_INACTIVE hibakódot ad 409-es státusszal.",
+            "Inaktív jegytípusra korábban kiállított Ticket rekordok ERVENYES állapotúak maradnak, és a QR-ellenőrzés érvényesnek jelöli őket.",
+            "Az inaktívvá tett jegytípus a katalógus legkisebb ár számításából kimarad.",
+            "Újra aktivált jegytípus ismét vásárolhatóvá válik."
+          ],
+          "dod": [
+            "Az isActive váltás szerveroldalon befolyásolja a vásárolhatóságot (BR-25).",
+            "A kiállított jegyek érvényessége független az isActive váltástól.",
+            "A végpont az OpenAPI leírásban szerepel a hibakódokkal.",
+            "Az FR-404 szerinti viselkedés automatizált teszttel fedett."
+          ]
+        },
+        {
+          "code": "E5-S5",
+          "title": "Legkisebb jegyár megjelenítése",
+          "points": 2,
+          "priority": "medium",
+          "requirements": [
+            "FR-405"
+          ],
+          "depends_on": [
+            "E5-S2"
+          ],
+          "description": "A katalógusban és az esemény részletei oldalon az esemény legkisebb vásárolható (aktív) jegytípusának ára jelenik meg „ettől: X Ft” formában; inaktív jegytípus ára nem számít bele.",
+          "acceptance": [
+            "A Budapest Rock Fesztivál 2026 eseménynél a megjelenő legkisebb ár 7 500 Ft (Küzdőtér állóhely).",
+            "A legkisebb ár csak az isActive = true jegytípusok közül számítódik.",
+            "Nincs aktív jegytípusú eseménynél a legkisebb ár nem jelenik meg, és a vásárlás nem indítható.",
+            "Az ár ezer-elválasztóval, HUF-ban, a felület nyelvének megfelelő formátumban jelenik meg (BR-15).",
+            "Az értékesítési ablakon kívüli jegytípus ára a legkisebb ár számításába nem számít bele."
+          ],
+          "dod": [
+            "A legkisebb ár számítása a katalóguslistában és a részletek oldalon konzisztens.",
+            "Az inaktív jegytípusok kizárása a számításból (BR-25) teszttel fedett.",
+            "A megjelenítés magyarul és angolul is helyes (NFR-09).",
+            "Az FR-405 szerinti viselkedés automatizált teszttel fedett."
+          ]
+        }
+      ]
+    },
+    {
+      "code": "E6",
+      "title": "Foglalás",
+      "goal": "A vásárló kiválasztott helyeinek zárolása, a foglalás pénzügyi összesítése és a kapacitás- és limit-szabályok érvényesítése. Az epic kezeli a 10 perces zár lejáratát és az egyidejű foglalások versenyhelyzetét, hogy egy székre egyszerre csak egy érvényes foglalás jöhessen létre.",
+      "stories": [
+        {
+          "code": "E6-S1",
+          "title": "Foglalás létrehozása ülőhelyekre",
+          "points": 8,
+          "priority": "urgent",
+          "requirements": [
+            "FR-501",
+            "BR-01",
+            "BR-02"
+          ],
+          "depends_on": [
+            "E4-S6",
+            "E5-S1"
+          ],
+          "description": "A vásárló kijelölt székeinek véglegesítésével Booking jön létre ZAROLT állapotban; a kiválasztott SeatState rekordok ZAROLT-ra kerülnek a foglaláshoz rendelt holdExpiresAt-tel. A Booking a JGY-<év>-<6 számjegy> formátumú kódot kap, és minden tétel pontosan egy székhez tartozik (BR-28).",
+          "acceptance": [
+            "Szabad székek véglegesítésekor létrejön a Booking ZAROLT állapotban JGY-2026-000xxx formátumú kóddal, és a székek SeatState.state értéke ZAROLT lesz.",
+            "A foglaláshoz tartozó minden BookingItem.seatId pontosan egy széket jelöl, quantity értéke 1.",
+            "Már ZAROLT vagy ELADOTT szék véglegesítése SEAT_TAKEN hibakódot ad 409-es státusszal, és nem jön létre Booking.",
+            "Nem az eseményhez tartozó szék megadása SEAT_NOT_IN_EVENT hibakódot ad 400-as státusszal.",
+            "Nem létező szék azonosítója SEAT_NOT_FOUND hibakódot ad 404-es státusszal.",
+            "Üres széklistával a véglegesítés BOOKING_EMPTY hibakódot ad 400-as státusszal."
+          ],
+          "dod": [
+            "A Booking, BookingItem és SeatState rekordok egyetlen tranzakcióban jönnek létre (NFR-15).",
+            "A Booking.code egyedi, JGY-<év>-<6 számjegy> formátumú, és a Booking.userId a bejelentkezett felhasználó.",
+            "A BR-01 és BR-28 szerinti viselkedés automatizált teszttel fedett.",
+            "A végpont az OpenAPI leírásban szerepel a hibakódokkal.",
+            "A végpont csak bejelentkezett, aktív VASARLO, SZERVEZO vagy ADMIN felhasználót enged (BR-21)."
+          ]
+        },
+        {
+          "code": "E6-S2",
+          "title": "Foglalás létrehozása állóhelyre darabszámmal",
+          "points": 5,
+          "priority": "urgent",
+          "requirements": [
+            "FR-502",
+            "BR-03"
+          ],
+          "depends_on": [
+            "E5-S1"
+          ],
+          "description": "Állóhelyes jegytípushoz a vásárló darabszámot ad meg; a foglalás a kiválasztott mennyiséget a jegytípus kapacitásából zárolja a holdExpiresAt-ig. Az állóhelyes tétel quantity értéke 1-nél nagyobb is lehet, és az eladott + zárolt darabszám nem haladhatja meg a capacity értékét (BR-03).",
+          "acceptance": [
+            "Állóhelyes jegytípusból 3 db foglalása létrehozza a Booking ZAROLT állapotban, egy BookingItem rekorddal quantity = 3 értékkel.",
+            "A darabszám az eladott és zárolt darabszámmal együtt nem haladhatja meg a jegytípus capacity értékét.",
+            "A 8. jegytípusból (capacity = 10) a 4 db szabad helyre 4 db foglalása sikeres, az 5. db kérése CAPACITY_EXCEEDED hibakódot ad 409-es státusszal.",
+            "0 vagy negatív darabszám megadása VALIDATION_ERROR hibakódot ad 400-as státusszal.",
+            "Inaktív jegytípusból történő foglalás TICKET_TYPE_INACTIVE hibakódot ad 409-es státusszal.",
+            "A zárolt darabszám a holdExpiresAt lejártáig a jegytípus kapacitásából foglaltnak számít."
+          ],
+          "dod": [
+            "Az állóhelyes foglalás BookingItem.quantity értéke 1-nél nagyobb is lehet, seatId nélkül.",
+            "A zárolt darabszám a kapacitásszámításba (eladott + zárolt) beleszámít (BR-03).",
+            "A végpont az OpenAPI leírásban szerepel a hibakódokkal.",
+            "A BR-03 szerinti határérték-viselkedés automatizált teszttel fedett."
+          ]
+        },
+        {
+          "code": "E6-S3",
+          "title": "Helyek zárolása és a zár lejárata",
+          "points": 8,
+          "priority": "urgent",
+          "requirements": [
+            "FR-503",
+            "FR-504",
+            "BR-02"
+          ],
+          "depends_on": [
+            "E6-S1"
+          ],
+          "description": "A foglalás létrehozásakor 10 perces zár indul (holdExpiresAt = létrehozás + 10 perc), amelyet a felület visszaszámlál. A zár lejártával a foglalás LEJART állapotba kerül, minden helye felszabadul, és a felület erről tájékoztat (BR-02, EC-026).",
+          "acceptance": [
+            "Új foglalás létrehozásakor a holdExpiresAt értéke a létrehozás időpontja + 10 perc, és a felület a hátralévő időt visszaszámlálja.",
+            "A zár lejártával a Booking állapota LEJART lesz, és a hozzá tartozó székek SeatState.state értéke SZABAD-ra vált.",
+            "Lejárt foglalásra indított fizetési kísérlet BOOKING_EXPIRED hibakódot ad 409-es státusszal.",
+            "A lejárt foglalás helyei más vásárló számára újra elérhetővé válnak.",
+            "A zár lejárta után a foglalás állapota nem módosítható FIZETVE állapotba (tiltott átmenet).",
+            "A lejárt foglalás a vásárlói limit számításába nem számít bele (BR-04)."
+          ],
+          "dod": [
+            "A zárolás és a lejárat kezelése (BR-02) időalapú lejáratkezeléssel (ütemezett vagy lusta kiértékeléssel) megvalósul.",
+            "A lejárat felszabadítja a székeket és az állóhely-kapacitást, tranzakcióban (NFR-15).",
+            "A BOOKING_EXPIRED hibakód (EC-026) a lejárt foglalás minden műveletére érvényes.",
+            "Az FR-503 és FR-504 szerinti viselkedés automatizált teszttel fedett.",
+            "A zárolás és lejárat időpontja az API válaszban ISO-8601 formátumban jelenik meg."
+          ]
+        },
+        {
+          "code": "E6-S4",
+          "title": "Foglalás összegzésének kiszámítása",
+          "points": 3,
+          "priority": "high",
+          "requirements": [
+            "FR-505",
+            "BR-07"
+          ],
+          "depends_on": [
+            "E6-S1"
+          ],
+          "description": "A rendszer a foglalás létrehozásakor kiszámítja a subtotal, serviceFee és total értékeket: subtotal = Σ(quantity × unitPrice), serviceFee = 250 Ft × jegydarabszám, total = subtotal + serviceFee (BR-07). Az összegek HUF egész számok, és a foglaláshoz rögzítődnek.",
+          "acceptance": [
+            "Az Erkély A két széke (2 × 12 500 Ft) esetén a subtotal = 25 000, a serviceFee = 500, a total = 25 500 Ft.",
+            "A Küzdőtér 3 db (3 × 7 500 Ft) esetén a subtotal = 22 500, a serviceFee = 750, a total = 23 250 Ft.",
+            "A serviceFee minden esetben 250 Ft × összes jegydarabszám, függetlenül a jegytípusoktól.",
+            "Több jegytípus egy foglalásban való szerepeltetésekor a subtotal a tételek lineTotal értékeinek összege.",
+            "A foglalás rögzített összegei a fizetésig nem változnak, akkor sem, ha a jegytípus ára időközben módosul.",
+            "Az összegek HUF egész számként, ezer-elválasztóval jelennek meg a felületen (BR-15)."
+          ],
+          "dod": [
+            "A subtotal, serviceFee és total mezők a Booking rekordban tárolódnak, és a számítás (BR-07) teszttel fedett.",
+            "Az összegzés a BookingItem.unitPrice és quantity értékeiből számítódik.",
+            "Az összeg a foglalás létrehozásakor rögzül, és a fizetésig változatlan.",
+            "A megjelenítés magyar és angol formátumban is helyes (NFR-09)."
+          ]
+        },
+        {
+          "code": "E6-S5",
+          "title": "Vásárlói limit érvényesítése",
+          "points": 5,
+          "priority": "high",
+          "requirements": [
+            "FR-506",
+            "BR-04"
+          ],
+          "depends_on": [
+            "E6-S1"
+          ],
+          "description": "Egy felhasználó egy eseményre legfeljebb a jegytípus maxPerUser értékéig vásárolhat; a limitbe a még zárolt és fizetésre váró foglalások is beleszámítanak, a lejárt és lemondott foglalások nem (BR-04). A túllépés TICKET_LIMIT_EXCEEDED hibát ad (EC-021).",
+          "acceptance": [
+            "A maxPerUser = 8 jegytípusból egy felhasználó összesen legfeljebb 8 jegyet birtokolhat az adott eseményre a zárolt és fizetésre váró foglalásaival együtt.",
+            "A limit túllépése TICKET_LIMIT_EXCEEDED hibakódot ad 409-es státusszal, a details mező tartalmazza a maxPerUser értéket.",
+            "A lejárt (LEJART) és lemondott (LEMONDVA) foglalások jegyei nem számítanak bele a limitbe.",
+            "A 8. jegytípusnál (maxPerUser = 2) a 3. jegy kérése TICKET_LIMIT_EXCEEDED hibakódot ad 409-es státusszal.",
+            "A limit esemény-szintű: két külön foglalás jegyei összeadódnak ugyanarra a jegytípusra.",
+            "A FIZETVE és ZAROLT állapotú foglalások jegyei egyaránt beleszámítanak a limitbe."
+          ],
+          "dod": [
+            "A limit a meglévő, nem lejárt és nem lemondott foglalások alapján, esemény-szinten számítódik (FR-506).",
+            "A TICKET_LIMIT_EXCEEDED hibakód (EC-021) és a details.maxPerUser megvalósul.",
+            "A BR-04 szerinti viselkedés automatizált teszttel fedett.",
+            "A végpont az OpenAPI leírásban szerepel a hibakóddal."
+          ]
+        },
+        {
+          "code": "E6-S6",
+          "title": "Kapacitás érvényesítése",
+          "points": 5,
+          "priority": "urgent",
+          "requirements": [
+            "FR-507",
+            "BR-03"
+          ],
+          "depends_on": [
+            "E6-S2"
+          ],
+          "description": "Kapacitást meghaladó foglalás nem hozható létre: állóhelynél az eladott + zárolt darabszám nem haladhatja meg a jegytípus capacity értékét, a kapacitás pontosan elérhető, de nem léphető túl (BR-03). A túllépés CAPACITY_EXCEEDED hibát ad (EC-020).",
+          "acceptance": [
+            "A 8. esemény Fedélzet jegytípusából (capacity = 10, 6 jegy foglalt) a 4 db szabad helyre 4 db foglalása sikeres.",
+            "Az előző esetben az 5. db kérése CAPACITY_EXCEEDED hibakódot ad 409-es státusszal.",
+            "A kapacitás pontosan elérhető: a maradék 4 db-ra a 4 db foglalás sikeres, 10 eladott + zárolt jegynél újabb foglalás nem lehetséges.",
+            "A zárolt (ZAROLT) foglalás darabszáma a kapacitásba beleszámít a zár lejártáig.",
+            "A lejárt foglalás felszabadítja a kapacitást, és a hely újra foglalhatóvá válik.",
+            "Inaktív jegytípusra indított foglalás TICKET_TYPE_INACTIVE hibakódot ad 409-es státusszal."
+          ],
+          "dod": [
+            "A kapacitás-ellenőrzés a jegytípus eladott és zárolt darabszámának összegén alapul (BR-03).",
+            "A CAPACITY_EXCEEDED hibakód (EC-020) megvalósul.",
+            "A BR-03 szerinti határérték-viselkedés automatizált teszttel fedett.",
+            "A kapacitás-ellenőrzés tranzakcióban fut, hogy egyidejű foglalásnál se léphető túl (NFR-02)."
+          ]
+        },
+        {
+          "code": "E6-S7",
+          "title": "Foglalás lemondása fizetés előtt",
+          "points": 3,
+          "priority": "high",
+          "requirements": [
+            "FR-508"
+          ],
+          "depends_on": [
+            "E6-S1"
+          ],
+          "description": "A vásárló a fizetés megkezdése előtt lemondhatja a foglalását; a foglalás LEMONDVA állapotba kerül, a helyek (székek és állóhely-kapacitás) felszabadulnak. Fizetés után a foglalás nem mondható le (tiltott átmenet).",
+          "acceptance": [
+            "ZAROLT állapotú foglalás lemondása LEMONDVA állapotba viszi a foglalást, és a székek SeatState.state értéke SZABAD lesz.",
+            "A lemondott foglalás helyei más vásárló számára újra elérhetővé válnak.",
+            "A lemondott foglalás jegyei nem számítanak bele a vásárlói limitbe (BR-04).",
+            "FIZETVE állapotú foglalás lemondása BOOKING_WRONG_STATE hibakódot ad 409-es státusszal.",
+            "Más felhasználó foglalásának lemondása FORBIDDEN hibakódot ad 403-as státusszal (BR-20).",
+            "Nem létező foglalás lemondása BOOKING_NOT_FOUND hibakódot ad 404-es státusszal."
+          ],
+          "dod": [
+            "A lemondás állapotátmenete (ZAROLT → LEMONDVA) és a helyek felszabadítása tranzakcióban valósul meg (NFR-15).",
+            "A canceledAt időpont rögzítésre kerül.",
+            "A BR-20 szerinti tulajdonos-ellenőrzés szerveroldalon érvényesül.",
+            "Az FR-508 szerinti viselkedés automatizált teszttel fedett."
+          ]
+        },
+        {
+          "code": "E6-S8",
+          "title": "Foglalás állapotának és záróidejének megjelenítése",
+          "points": 3,
+          "priority": "high",
+          "requirements": [
+            "FR-509"
+          ],
+          "depends_on": [
+            "E6-S3"
+          ],
+          "description": "A felület a foglalás aktuális állapotát (ZAROLT, FIZETESRE_VAR, FIZETVE, LEJART, LEMONDVA, VISSZATERITVE) és hátralévő záróidejét mutatja. A hátralévő idő a holdExpiresAt alapján számítódik, és lejáratkor a felület tájékoztat.",
+          "acceptance": [
+            "A ZAROLT foglalás oldalán az állapot és a holdExpiresAt alapján számított hátralévő idő (mm:ss) jelenik meg.",
+            "A holdExpiresAt elteltével a felület a foglalást LEJART állapotban, a helyek felszabadulásáról szóló üzenettel mutatja.",
+            "Más felhasználó foglalásának megtekintése FORBIDDEN hibakódot ad 403-as státusszal (BR-20), admin kivételével.",
+            "Nem létező foglalás megtekintése BOOKING_NOT_FOUND hibakódot ad 404-es státusszal.",
+            "A megjelenített állapot megegyezik a szerveroldali Booking.status értékkel.",
+            "A LEMONDVA és LEJART foglalásnál nem jelenik meg fizetési lehetőség."
+          ],
+          "dod": [
+            "Az állapot és a hátralévő záróidő az API válaszából (status, holdExpiresAt) számítódik.",
+            "A lejáratról szóló tájékoztatás megjelenik a felületen.",
+            "A megjelenítés magyar és angol nyelven is teljes (NFR-09).",
+            "A BR-20 szerinti jogosultság-ellenőrzés teszttel fedett."
+          ]
+        },
+        {
+          "code": "E6-S9",
+          "title": "Egyidejű foglalások kezelése",
+          "points": 8,
+          "priority": "urgent",
+          "requirements": [
+            "FR-510",
+            "NFR-02"
+          ],
+          "depends_on": [
+            "E6-S1",
+            "E6-S6"
+          ],
+          "description": "Ha két vásárló ugyanazt a széket vagy ugyanazt az utolsó szabad állóhely-kapacitást egyszerre kéri, pontosan az egyik foglalás jöhet létre; a másik SEAT_TAKEN (EC-022) vagy CAPACITY_EXCEEDED (EC-020) hibát kap. A zárolás és a kapacitás-ellenőrzés tranzakcióban és megfelelő sorzárolással történik, hogy párhuzamos kérés esetén se jöhessen létre két sikeres foglalás (NFR-02).",
+          "acceptance": [
+            "Két párhuzamos kérés ugyanarra a székre pontosan egy sikeres foglalást eredményez, a másik SEAT_TAKEN hibakódot ad 409-es státusszal.",
+            "Két párhuzamos kérés az utolsó szabad állóhelyre pontosan egy sikeres foglalást eredményez, a másik CAPACITY_EXCEEDED hibakódot ad 409-es státusszal.",
+            "20 egyidejű kérés ugyanarra a székre esetén legfeljebb 1 foglalás jön létre, a többi 19 SEAT_TAKEN hibát kap.",
+            "Párhuzamos foglalások után egyetlen jegytípusnál sem haladja meg az eladott + zárolt darabszám a capacity értéket (BR-03).",
+            "A versenyhelyzetben vesztes kérés nem hoz létre Booking rekordot és nem módosít SeatState rekordot.",
+            "Egyidejű foglalások után egy székhez legfeljebb egy nem lejárt, nem lemondott foglalás tartozik (BR-01)."
+          ],
+          "dod": [
+            "A szék- és kapacitászár tranzakcióban, sorzárolással (SELECT FOR UPDATE vagy megfelelő izolációs szint) valósul meg.",
+            "Az FR-510 és az NFR-02 szerinti viselkedés párhuzamos kérésekkel automatizáltan tesztelt.",
+            "A versenyhelyzetben keletkező hiba mindig SEAT_TAKEN (EC-022) vagy CAPACITY_EXCEEDED (EC-020), soha nem 500-as hiba.",
+            "A sikertelen kérés nem hagy maga után részleges mentést (NFR-15).",
+            "A hibaválasz az egységes formátumot követi (NFR-07)."
+          ]
+        }
+      ]
+    }
+  ]
+}

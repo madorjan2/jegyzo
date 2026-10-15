@@ -1,0 +1,188 @@
+# Jegyzo – egyparancsos QA sandbox környezet
+#
+#   docker compose up -d              # minden szolgáltatás
+#   docker compose up -d postgres mailhog kiwi-db kiwi-init kiwi   # csak infrastruktúra
+#   docker compose down               # leállítás (az adatok megmaradnak)
+#   docker compose down -v            # leállítás ÉS összes adat törlése
+#
+# Az `api` és `web` szolgáltatás build kontextusa (./backend, ./frontend) csak
+# akkor létezik, ha az alkalmazás kódja már elkészült – lásd
+# docs/02-architektura/02-docker-es-futtatas.md
+
+name: jegyzo
+
+services:
+  # ---------------------------------------------------------------- adatbázis
+  postgres:
+    image: postgres:16-alpine
+    container_name: jegyzo-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-jegyzo}
+      POSTGRES_USER: ${POSTGRES_USER:-jegyzo}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-jegyzo_dev_pw}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-jegyzo} -d ${POSTGRES_DB:-jegyzo}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # ------------------------------------------------------------ levélfogadó
+  # Minden kimenő e-mail ide fut be; valódi küldés nincs.
+  mailhog:
+    image: mailhog/mailhog:v1.0.1
+    container_name: jegyzo-mailhog
+    restart: unless-stopped
+    ports:
+      - "${MAILHOG_SMTP_PORT:-1025}:1025"
+      - "${MAILHOG_UI_PORT:-8025}:8025"
+
+  # -------------------------------------------------------------- alkalmazás
+  # A ./backend könyvtárat és a backend/Dockerfile-t az implementáló agent
+  # készíti el. Elvárt szerződés: lásd docs/02-architektura/01-rendszerkep.md
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: jegyzo-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mailhog:
+        condition: service_started
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      PORT: 4000
+      DATABASE_URL: postgresql://${POSTGRES_USER:-jegyzo}:${POSTGRES_PASSWORD:-jegyzo_dev_pw}@postgres:5432/${POSTGRES_DB:-jegyzo}
+      JWT_SECRET: ${JWT_SECRET:-dev-only-jwt-secret-change-me}
+      JWT_ACCESS_TTL_SECONDS: ${JWT_ACCESS_TTL_SECONDS:-900}
+      JWT_REFRESH_TTL_SECONDS: ${JWT_REFRESH_TTL_SECONDS:-604800}
+      BCRYPT_ROUNDS: ${BCRYPT_ROUNDS:-10}
+      BOOKING_HOLD_MINUTES: ${BOOKING_HOLD_MINUTES:-10}
+      SERVICE_FEE_PER_TICKET: ${SERVICE_FEE_PER_TICKET:-250}
+      DEFAULT_MAX_TICKETS_PER_USER: ${DEFAULT_MAX_TICKETS_PER_USER:-8}
+      DEFAULT_LOCALE: ${DEFAULT_LOCALE:-hu}
+      SUPPORTED_LOCALES: ${SUPPORTED_LOCALES:-hu,en}
+      SMTP_HOST: ${SMTP_HOST:-mailhog}
+      SMTP_PORT: ${SMTP_PORT:-1025}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      MAIL_FROM_NAME: ${MAIL_FROM_NAME:-Jegyzo}
+      MAIL_FROM_ADDRESS: ${MAIL_FROM_ADDRESS:-noreply@jegyzo.local}
+      CORS_ORIGIN: http://localhost:${WEB_PORT:-5173}
+    ports:
+      - "${API_PORT:-4000}:4000"
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - node -e "fetch('http://127.0.0.1:4000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 90s
+
+  # A ./frontend könyvtárat és a frontend/Dockerfile-t az implementáló agent
+  # készíti el. A konténer az elkészült felületet az 5173-as porton szolgálja ki.
+  web:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: jegyzo-web
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_started
+    environment:
+      VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:4000/api}
+    ports:
+      - "${WEB_PORT:-5173}:5173"
+
+  # ---------------------------------------------------------------- Kiwi TCMS
+  # Tesztmenedzsment (a sandbox nem része, csak egyparancsos elérhetőség).
+  kiwi-db:
+    image: mariadb:11.4
+    container_name: jegyzo-kiwi-db
+    restart: unless-stopped
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    environment:
+      MARIADB_ROOT_PASSWORD: ${KIWI_DB_ROOT_PASSWORD:-kiwi_root_pw}
+      MARIADB_DATABASE: ${KIWI_DB_NAME:-kiwi}
+      MARIADB_USER: ${KIWI_DB_USER:-kiwi}
+      MARIADB_PASSWORD: ${KIWI_DB_PASSWORD:-kiwi_dev_pw}
+    volumes:
+      - kiwi-db-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  # Egyszer lefutó inicializálás: séma, admin felhasználó, domain, jogosultságok.
+  # Enélkül a Kiwi TCMS nem használható (a hivatalos út interaktív, ezért itt
+  # automatizálva van).
+  kiwi-init:
+    image: pub.kiwitcms.eu/kiwitcms/kiwi:latest
+    container_name: jegyzo-kiwi-init
+    restart: "no"
+    depends_on:
+      kiwi-db:
+        condition: service_healthy
+    environment:
+      KIWI_DB_HOST: kiwi-db
+      KIWI_DB_PORT: "3306"
+      KIWI_DB_NAME: ${KIWI_DB_NAME:-kiwi}
+      KIWI_DB_USER: ${KIWI_DB_USER:-kiwi}
+      KIWI_DB_PASSWORD: ${KIWI_DB_PASSWORD:-kiwi_dev_pw}
+      DJANGO_SUPERUSER_USERNAME: ${KIWI_ADMIN_USER:-admin}
+      DJANGO_SUPERUSER_EMAIL: ${KIWI_ADMIN_EMAIL:-admin@jegyzo.local}
+      DJANGO_SUPERUSER_PASSWORD: ${KIWI_ADMIN_PASSWORD:-kiwiadmin123}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -e
+        echo "Kiwi TCMS inicializálás..."
+        python /Kiwi/manage.py migrate --noinput
+        python /Kiwi/manage.py createsuperuser --noinput || echo "admin már létezik"
+        python /Kiwi/manage.py set_domain localhost || true
+        python /Kiwi/manage.py refresh_permissions
+        echo "Kiwi TCMS kész."
+
+  kiwi:
+    image: pub.kiwitcms.eu/kiwitcms/kiwi:latest
+    container_name: jegyzo-kiwi
+    restart: unless-stopped
+    depends_on:
+      kiwi-db:
+        condition: service_healthy
+      kiwi-init:
+        condition: service_completed_successfully
+    environment:
+      KIWI_DB_HOST: kiwi-db
+      KIWI_DB_PORT: "3306"
+      KIWI_DB_NAME: ${KIWI_DB_NAME:-kiwi}
+      KIWI_DB_USER: ${KIWI_DB_USER:-kiwi}
+      KIWI_DB_PASSWORD: ${KIWI_DB_PASSWORD:-kiwi_dev_pw}
+    ports:
+      - "${KIWI_PORT:-8080}:8080"
+      - "${KIWI_HTTPS_PORT:-8443}:8443"
+    volumes:
+      - kiwi-uploads:/Kiwi/uploads
+    cap_drop:
+      - ALL
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - python -c "import urllib.request,ssl;ctx=ssl._create_unverified_context();urllib.request.urlopen('https://127.0.0.1:8443/',context=ctx,timeout=5)"
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 60s
+
+volumes:
+  postgres-data:
+  kiwi-db-data:
+  kiwi-uploads:

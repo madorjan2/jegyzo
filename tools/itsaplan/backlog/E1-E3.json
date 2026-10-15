@@ -1,0 +1,582 @@
+{
+  "epics": [
+    {
+      "code": "E1",
+      "title": "Platform alapok és futtatható váz",
+      "goal": "A rendszer a docker compose fájlból egyetlen paranccsal elinduljon, és minden későbbi epic erre a vázra épüljön. Az epic tartalmazza a konténeres futtatást, a health végpontot, az egységes hibaválasz-formátumot, a migrációs és determinisztikus seed keretrendszert, az i18n alapokat, az OpenAPI dokumentációt, valamint a CORS és környezeti konfiguráció kezelését. A váz feladata, hogy a fejlesztés és a tesztelés kiszámítható, ismételhető környezetben folyjon.",
+      "stories": [
+        {
+          "code": "E1-S1",
+          "title": "Docker Compose alapú projektváz létrehozása (API, felület, adatbázis)",
+          "points": 5,
+          "priority": "urgent",
+          "requirements": ["NFR-05", "NFR-17"],
+          "depends_on": [],
+          "description": "A rendszer egyetlen docker compose paranccsal induljon el: PostgreSQL adatbázis, API szolgáltatás és webes felület konténerből. A projekt könyvtárszerkezete (API, felület, migrációk, seed) egységes és dokumentált legyen. Az adatok névvel ellátott kötetben maradjanak meg a konténerek újraindítása között. Minden konténer rendelkezzen healthcheck-kel, hogy a docker compose ps egyértelmű állapotot mutasson. A fejlesztői futtatás és a demo indítás ugyanazt a belépési pontot használja, és a konfiguráció környezeti változókból érkezzen.",
+          "acceptance": [
+            "A docker compose up parancs elindítja a PostgreSQL, az API és a felület konténert, és mindhárom healthy állapotba kerül a docker compose ps kimenetében.",
+            "A docker compose restart után a korábban létrehozott foglalások és felhasználók megmaradnak, mert az adatbázis névvel ellátott kötetben tárolódik.",
+            "Az API a konfigurált porton válaszol, a felület pedig böngészőből elérhető a compose fájlban megadott porton.",
+            "Hiányzó vagy hibás adatbázis-kapcsolat esetén az API konténer nem indul el csendben, hanem egyértelmű konfigurációs hibaüzenettel leáll.",
+            "A compose fájl nem tartalmaz beégetett titkot és nem mutat valós külső szolgáltatásra."
+          ],
+          "dod": [
+            "A docker compose up és docker compose down parancsok a README-ben dokumentáltak.",
+            "A projekt könyvtárszerkezete (api, web, db/migrations, db/seed) rögzített és konzisztens.",
+            "Minden konténerhez tartozik healthcheck a compose fájlban.",
+            "A compose konfiguráció .env fájlból olvassa a portokat és a hitelesítő adatokat, és van .env.example.",
+            "A kötet-alapú adatmegmaradás konténer-újraindítással ellenőrzött."
+          ]
+        },
+        {
+          "code": "E1-S2",
+          "title": "API health végpont és strukturált naplózás",
+          "points": 2,
+          "priority": "high",
+          "requirements": ["NFR-08", "NFR-17"],
+          "depends_on": ["E1-S1"],
+          "description": "Az API kapjon health végpontot, amely az API és az adatbázis-kapcsolat állapotát is jelzi, és a compose healthcheck alapja. A beérkező kérések strukturált JSON naplóba kerüljenek: időpont, útvonal, HTTP státusz, válaszidő és a felhasználó azonosítója. A napló nem tartalmazhat jelszót, tokent vagy teljes kártyaszámot. A health végpont bejelentkezés nélkül is elérhető, és nem szivárogtat belső részleteket.",
+          "acceptance": [
+            "A health végpont 200-as státusszal tér vissza, és a válasz tartalmazza az API és az adatbázis állapotát.",
+            "Ha az adatbázis-kapcsolat nem elérhető, a health végpont nem 200-at ad, és jelzi a hibás komponenst.",
+            "Minden API kéréshez egy JSON naplósor készül időponttal, útvonallal, státusszal, válaszidővel és felhasználóval.",
+            "A naplóban nem jelenik meg jelszó, access vagy refresh token, és nem szerepel teljes kártyaszám.",
+            "A health végpont bejelentkezés nélkül is elérhető."
+          ],
+          "dod": [
+            "A health végpont szerepel az OpenAPI leírásban.",
+            "A naplóformátum dokumentált, és minden kérésre egységesen érvényesül.",
+            "A health végpont a compose healthcheck parancsában szerepel.",
+            "Ellenőrzött, hogy a napló kimenet nem tartalmaz érzékeny adatot."
+          ]
+        },
+        {
+          "code": "E1-S3",
+          "title": "Egységes hibaválasz-formátum és hibakódok bevezetése",
+          "points": 3,
+          "priority": "urgent",
+          "requirements": ["NFR-07", "VALIDATION_ERROR", "UNAUTHENTICATED", "FORBIDDEN", "NOT_FOUND", "RATE_LIMITED", "INTERNAL_ERROR"],
+          "depends_on": ["E1-S1"],
+          "description": "Minden hibaválasz egységes szerkezetet kövessen: error.code, error.message, error.messageEn és opcionális error.details. A code nyelvfüggetlen azonosító, a szövegek az Accept-Language fejléc szerint magyarul vagy angolul érkeznek, a hibakód mindig azonos. Az általános hibakódok (VALIDATION_ERROR, UNAUTHENTICATED, FORBIDDEN, NOT_FOUND, RATE_LIMITED, INTERNAL_ERROR) központilag legyenek definiálva. Stack trace és belső elérési út soha ne kerüljön a válaszba. Az érvénytelen kérés mindig VALIDATION_ERROR legyen, ne 500.",
+          "acceptance": [
+            "Hiányzó kötelező mező esetén a válasz VALIDATION_ERROR kódot és 400-as státuszt ad.",
+            "Ismeretlen útvonalra NOT_FOUND kód és 404-es státusz érkezik.",
+            "Az Accept-Language: en fejléc mellett a messageEn, hu mellett a message szöveg kerül kitöltésre, a code változatlan.",
+            "A hibaválasz soha nem tartalmaz stack trace-t vagy belső fájlútvonalat.",
+            "Váratlan szerverhiba esetén a válasz INTERNAL_ERROR kódot ad 500-as státusszal, belső részletek nélkül."
+          ],
+          "dod": [
+            "Az összes általános hibakód egyetlen helyen definiált, és a végpontok ezt használják.",
+            "A hibaválasz-szerkezet szerepel az OpenAPI leírásban és a dokumentációban.",
+            "Minden általános hibakódhoz létezik magyar és angol üzenet.",
+            "Ellenőrzött, hogy minden hiba a közös formátumot követi."
+          ]
+        },
+        {
+          "code": "E1-S4",
+          "title": "Adatbázis migráció és determinisztikus seed keretrendszer",
+          "points": 5,
+          "priority": "urgent",
+          "requirements": ["NFR-01", "NFR-12"],
+          "depends_on": ["E1-S1"],
+          "description": "Verziózott adatbázis-migrációk hozzák létre a teljes sémát: User, Venue, Section, Row, Seat, Event, TicketType, SeatState, Booking, BookingItem, PaymentTransaction, Ticket, Refund, LedgerEntry, EmailNotification. A seed parancs determinisztikusan töltse be a demo adatkészletet rögzített azonosítókkal és összegekkel, és legyen idempotensen újrafuttatható. A teljes reset/reseed legfeljebb 60 másodpercet vegyen igénybe, és egyetlen paranccsal induljon. A seed a demo adatkészlet dokumentumban megadott értékeket pontosan állítsa elő.",
+          "acceptance": [
+            "A migrációk üres adatbázisból létrehozzák a teljes sémát, és a migrációs állapot verziókövethető.",
+            "A seed parancs kétszeri lefuttatása után az eseménylista, a foglalások és a pénzügyi napló pontosan megegyezik.",
+            "A seed a 7 felhasználót, 5 helyszínt, 10 eseményt és 10 jegytípust a dokumentált azonosítókkal és értékekkel hozza létre.",
+            "A teljes adatbázis törlése és újratöltése egyetlen paranccsal, 60 másodpercen belül lefut.",
+            "A JGY-<év>-000001 foglalás végösszege a seed után 25 500 Ft, a JGY-<év>-000008 foglalás pedig VISSZATERITVE állapotú."
+          ],
+          "dod": [
+            "A migrációs és seed parancsok dokumentáltak és egyetlen hívásból futtathatók.",
+            "A seed adatok forrása a demo adatkészlet dokumentum, eltérés nincs.",
+            "A seed idempotensen újrafuttatható, ismételt futtatás nem duplikál adatot.",
+            "A séma tartalmazza az összes entitást és a dokumentált megszorításokat.",
+            "A reset parancs időmérése megtörtént a 60 másodperces korláttal."
+          ]
+        },
+        {
+          "code": "E1-S5",
+          "title": "Nemzetköziesítési keretrendszer (hu/en) beállítása",
+          "points": 5,
+          "priority": "high",
+          "requirements": ["NFR-09", "BR-14"],
+          "depends_on": ["E1-S1"],
+          "description": "A felület minden szövege nyelvi erőforrásból származzon, beégetett magyar szöveg nélkül. Az alapértelmezett nyelv a magyar, angolra váltható, és a bejelentkezett felhasználó locale beállítása megmarad. Az API az Accept-Language fejléc alapján adja a hibaüzeneteket, miközben a hibakód változatlan marad. Hiányzó fordítási kulcs egyik nyelven sem fordulhat elő, és a dátum- és pénzformázás a nyelvhez igazodik.",
+          "acceptance": [
+            "A felület magyar és angol nyelven is hiánytalanul megjelenik, hiányzó fordítási kulcs nem fordul elő.",
+            "A felület szövegei nyelvi erőforrásból származnak, a komponensekben nincs beégetett magyar szöveg.",
+            "A bejelentkezett felhasználó locale beállítása (hu vagy en) a bejelentkezés után is érvényben marad.",
+            "Az Accept-Language: hu és en ugyanarra a hibára azonos code-ot, de eltérő szöveget ad.",
+            "Magyar formázásnál a dátum 2026. november 14. 19:00, az összeg 12 500 Ft alakban jelenik meg."
+          ],
+          "dod": [
+            "A fordítási kulcsok hu és en fájlban is teljesek, a kulcshiány ellenőrzött.",
+            "Az i18n könyvtárválasztás és a szövegkinyerés módja dokumentált.",
+            "Az Accept-Language feldolgozás központi helyen történik, nem végpontonként ismételve.",
+            "A nyelvváltás minden képernyőn végigvihető."
+          ]
+        },
+        {
+          "code": "E1-S6",
+          "title": "OpenAPI dokumentáció kiszolgálása",
+          "points": 3,
+          "priority": "high",
+          "requirements": ["NFR-11"],
+          "depends_on": ["E1-S1"],
+          "description": "Az API szolgáljon ki OpenAPI leírást interaktív felülettel a /api/docs útvonalon. A leírás fedje le az összes végpontot, a kérés- és válaszsémákat, valamint a lehetséges hibakódokat. A dokumentáció a futó API-val mindig összhangban legyen, ezért generált, ne kézzel karbantartott. A séma tartalmazza a Bearer tokenes hitelesítést és a közös hibaválasz-szerkezetet.",
+          "acceptance": [
+            "A /api/docs útvonal bejelentkezés nélkül megnyitható, és felsorolja az összes végpontot.",
+            "A leírás tartalmazza az egyes végpontok kérés- és válaszsémáit, valamint a lehetséges hibakódokat.",
+            "A séma jelzi a védett végpontoknál a Bearer tokenes hitelesítést.",
+            "Új végpont hozzáadása esetén a dokumentáció automatikusan frissül, kézi szerkesztés nélkül.",
+            "A dokumentáció és a tényleges végpontlista összevetése eltérést nem mutat."
+          ],
+          "dod": [
+            "Az OpenAPI leírás generált, a forráskódból származik.",
+            "A dokumentációs útvonal a README-ben szerepel.",
+            "Ellenőrzött, hogy minden végpont és a hozzá tartozó hibakódok szerepelnek a leírásban.",
+            "A séma tartalmazza a közös hibaválasz-szerkezetet."
+          ]
+        },
+        {
+          "code": "E1-S7",
+          "title": "CORS és környezeti konfiguráció kezelése",
+          "points": 2,
+          "priority": "urgent",
+          "requirements": [],
+          "depends_on": ["E1-S1"],
+          "description": "Az API konfigurációja környezeti változókból érkezzen: adatbázis-kapcsolat, portok, token-élettartamok és a CORS engedélyezett eredetek. A CORS csak a konfigurált felületi eredetről engedje a kéréseket, és támogassa az Authorization és Accept-Language fejléceket. A fejlesztői és a konténeres futtatás ugyanazt a konfigurációs mechanizmust használja. Érzékeny érték ne kerüljön a forráskódba, csak a dokumentált példa fájlba.",
+          "acceptance": [
+            "A konfigurált felületi eredettől érkező kérés átmegy a CORS ellenőrzésen, és a válasz tartalmazza a szükséges fejléceket.",
+            "Egy nem engedélyezett eredetről érkező kérés nem kap CORS engedélyt.",
+            "Az Authorization és Accept-Language fejléc engedélyezett a preflight válaszban.",
+            "Hiányzó kötelező környezeti változó esetén az API induláskor egyértelmű hibát ad, nem fut tovább hibás konfigurációval.",
+            "A forráskódban nincs beégetett titok, csak a .env.example tartalmaz dokumentált helyőrzőket."
+          ],
+          "dod": [
+            "Minden környezeti változó egy helyen, tipizáltan kerül beolvasásra és validálásra.",
+            "A .env.example tartalmazza az összes szükséges változót leírással.",
+            "A CORS beállítás a konfigurációból származik, nem beégetett.",
+            "A konfigurációs hibaüzenetek magyar és angol nyelven is elérhetők."
+          ]
+        }
+      ]
+    },
+    {
+      "code": "E2",
+      "title": "Felhasználói fiók és hitelesítés",
+      "goal": "A látogató e-mail címmel és jelszóval regisztrálhasson, bejelentkezhessen és munkamenetét tokenekkel tarthassa fenn. Az epic lefedi a token megújítását, a kijelentkezést, a profil kezelését, a jelszócserét, valamint a szerepkör-alapú jogosultság-ellenőrzést és az inaktív felhasználók kizárását. A fiókkezelés az eseménykatalógus, a vásárlás és a backoffice előfeltétele.",
+      "stories": [
+        {
+          "code": "E2-S1",
+          "title": "Regisztráció e-mail címmel és jelszóval",
+          "points": 3,
+          "priority": "urgent",
+          "requirements": ["FR-101", "BR-16", "BR-17"],
+          "depends_on": ["E1-S4"],
+          "description": "Új felhasználó e-mail cím, jelszó és teljes név megadásával regisztrálhasson. Az e-mail cím kis-nagybetűtől függetlenül egyedi (BR-16), a jelszóra a BR-17 vonatkozik: legalább 8 karakter, kisbetű, nagybetű és szám. A létrejövő fiók szerepköre mindig VASARLO, az isActive értéke igaz, a locale alapértéke hu. A jelszó bcrypt-tel hashelve tárolódik, és semmilyen válaszban nem jelenik meg. A fullName 2–80 karakter hosszú.",
+          "acceptance": [
+            "Érvényes e-mail címmel, erős jelszóval és 2–80 karakteres névvel a regisztráció sikeres, a fiók szerepköre VASARLO.",
+            "Már létező e-mail címmel, kis-nagybetűtől függetlenül, AUTH_EMAIL_TAKEN hibakód érkezik 409-es státusszal.",
+            "Nyolc karakternél rövidebb vagy kisbetűt, nagybetűt, illetve számot nélkülöző jelszó esetén AUTH_WEAK_PASSWORD hibakód érkezik 400-as státusszal, és a fiók nem jön létre.",
+            "Formailag érvénytelen e-mail cím esetén VALIDATION_ERROR hibakód érkezik 400-as státusszal.",
+            "A válaszban sem a jelszó, sem a passwordHash nem jelenik meg.",
+            "A pontosan 8 karakteres, kisbetűt, nagybetűt és számot tartalmazó jelszó elfogadott."
+          ],
+          "dod": [
+            "A jelszó bcrypt-tel, legalább 10 rounds értékkel hashelve tárolódik.",
+            "Az e-mail egyedisége adatbázis-szintű megszorítással is biztosított, kis-nagybetűtől függetlenül.",
+            "A végpont megjelenik az OpenAPI leírásban a dokumentált hibakódokkal.",
+            "A BR-17 jelszabály unit teszttel lefedett.",
+            "A válaszséma nem tartalmazza a jelszó mezőt."
+          ]
+        },
+        {
+          "code": "E2-S2",
+          "title": "Bejelentkezés access és refresh tokennel",
+          "points": 5,
+          "priority": "urgent",
+          "requirements": ["FR-102"],
+          "depends_on": ["E2-S1"],
+          "description": "Helyes e-mail és jelszó esetén a rendszer access és refresh tokent ad. Az access token 15 perc, a refresh token 7 nap érvényességű (NFR-16). Hibás hitelesítő adatra AUTH_INVALID_CREDENTIALS hibakód érkezik 401-es státusszal. Inaktív felhasználó bejelentkezése AUTH_USER_INACTIVE hibakóddal 403-as státusszal elutasított (BR-21). A bejelentkezési kísérletek száma korlátozott.",
+          "acceptance": [
+            "Helyes e-mail és jelszó esetén a válasz érvényes access és refresh tokent, valamint a tokenek lejárati idejét tartalmazza.",
+            "Hibás jelszó esetén AUTH_INVALID_CREDENTIALS hibakód érkezik 401-es státusszal, token nélkül.",
+            "Az inaktiv@jegyzo.local felhasználó bejelentkezése AUTH_USER_INACTIVE hibakóddal 403-as státusszal elutasított.",
+            "Nem létező e-mail címmel próbált bejelentkezés ugyanazt az AUTH_INVALID_CREDENTIALS hibát adja, mint a hibás jelszó.",
+            "Az access token élettartama 15 perc, a refresh tokené 7 nap.",
+            "Túl sok egymást követő hibás kísérlet után a rendszer RATE_LIMITED hibakódot ad 429-es státusszal."
+          ],
+          "dod": [
+            "A tokenek aláírása és lejárata dokumentált, a lejárat szerveroldalon ellenőrzött.",
+            "A jelszó-ellenőrzés időzítés-állandó összehasonlítást használ.",
+            "A végpont az OpenAPI leírásban szerepel a hibakódokkal.",
+            "A hibás bejelentkezési kísérletek korlátozása konfigurálható.",
+            "A sikeres bejelentkezés token nélkül naplózódik a strukturált naplóban."
+          ]
+        },
+        {
+          "code": "E2-S3",
+          "title": "Access token megújítása refresh tokennel",
+          "points": 3,
+          "priority": "high",
+          "requirements": ["FR-103"],
+          "depends_on": ["E2-S2"],
+          "description": "A refresh tokennel új access token kérhető anélkül, hogy a felhasználó újra bejelentkezne (FR-103). Érvénytelen vagy visszavont refresh tokenre AUTH_REFRESH_INVALID hibakód érkezik 401-es státusszal. Lejárt refresh token esetén a megújítás szintén sikertelen. Inaktív felhasználó refresh tokenje nem érvényesíthető (BR-21). A megújítás nem hoz létre új refresh tokent.",
+          "acceptance": [
+            "Érvényes refresh tokennel a válasz új, érvényes access tokent tartalmaz.",
+            "Visszavont vagy ismeretlen refresh tokennel AUTH_REFRESH_INVALID hibakód érkezik 401-es státusszal.",
+            "Lejárt refresh tokennel a megújítás AUTH_REFRESH_INVALID hibakóddal elutasított.",
+            "Inaktív felhasználó refresh tokenjével a megújítás AUTH_USER_INACTIVE hibakóddal, 403-as státusszal elutasított.",
+            "A megújítás nem hoz létre új refresh tokent, a meglévő érvényessége változatlan marad."
+          ],
+          "dod": [
+            "A refresh token érvényessége szerveroldalon ellenőrzött, a visszavonás azonnal érvényesül.",
+            "A végpont az OpenAPI leírásban szerepel a hibakódokkal.",
+            "A refresh token tárolása és visszavonása dokumentált.",
+            "A megújítási útvonal nem igényel jelszót."
+          ]
+        },
+        {
+          "code": "E2-S4",
+          "title": "Kijelentkezés és refresh token visszavonása",
+          "points": 3,
+          "priority": "medium",
+          "requirements": ["FR-104"],
+          "depends_on": ["E2-S2"],
+          "description": "A kijelentkezés visszavonja az aktuális refresh tokent, így azzal további megújítás nem lehetséges (FR-104). A művelethez érvényes access token szükséges. A visszavonás után a refresh tokennel indított megújítás AUTH_REFRESH_INVALID hibát ad. A kijelentkezés nem érinti a felhasználó más eszközön lévő munkamenetét.",
+          "acceptance": [
+            "Sikeres kijelentkezés után az adott refresh tokennel a megújítás AUTH_REFRESH_INVALID hibakóddal 401-es státusszal elutasított.",
+            "Bejelentkezés nélküli kijelentkezési kérés UNAUTHENTICATED hibakódot ad 401-es státusszal.",
+            "A kijelentkezés a felhasználó egyéb munkameneteit nem érvényteleníti.",
+            "Már visszavont refresh tokennel indított kijelentkezés nem ad 500-as hibát, hanem kezelt hibaválaszt.",
+            "A művelet sikeres válasza nem tartalmaz tokent."
+          ],
+          "dod": [
+            "A refresh token visszavonása szerveroldalon, tartósan tárolódik.",
+            "A végpont az OpenAPI leírásban szerepel.",
+            "A visszavont token ismételt használata ellenőrzött.",
+            "A kijelentkezés naplózódik a strukturált naplóban."
+          ]
+        },
+        {
+          "code": "E2-S5",
+          "title": "Profil megtekintése és módosítása",
+          "points": 3,
+          "priority": "high",
+          "requirements": ["FR-105"],
+          "depends_on": ["E2-S2"],
+          "description": "A bejelentkezett felhasználó megtekintheti és módosíthatja a fullName, phone és locale mezőket (FR-105). Az email és a role nem módosítható. A phone formátuma +36 kezdetű, 9 számjegy, szóközök nélkül tárolva. A locale értéke hu vagy en. A válasz sosem tartalmazza a passwordHash mezőt.",
+          "acceptance": [
+            "A profil lekérdezése a bejelentkezett felhasználó fullName, phone, locale, email és role mezőit adja vissza passwordHash nélkül.",
+            "A fullName és a locale módosítása sikeres, a válasz a friss értékeket tartalmazza.",
+            "Az email vagy a role módosítására tett kísérlet nem változtatja meg ezeket a mezőket.",
+            "Nem +36 kezdetű vagy nem 9 számjegyű telefonszám esetén VALIDATION_ERROR hibakód érkezik 400-as státusszal.",
+            "Bejelentkezés nélküli profil lekérdezés UNAUTHENTICATED hibakódot ad 401-es státusszal."
+          ],
+          "dod": [
+            "A profil-végpont az OpenAPI leírásban szerepel a mezőmegszorításokkal.",
+            "A phone tárolási formátuma a domain adatmodell szerint dokumentált.",
+            "A válaszséma kizárja a passwordHash mezőt.",
+            "A módosítás frissíti az updatedAt időbélyeget."
+          ]
+        },
+        {
+          "code": "E2-S6",
+          "title": "Jelszócsere a jelenlegi jelszó megadásával",
+          "points": 3,
+          "priority": "medium",
+          "requirements": ["FR-106"],
+          "depends_on": ["E2-S2"],
+          "description": "A bejelentkezett felhasználó a jelenlegi jelszó megadásával új jelszót állíthat be (FR-106). A régi jelszó hibás megadása AUTH_OLD_PASSWORD_MISMATCH hibakódot ad 400-as státusszal. Az új jelszóra a BR-17 szabály vonatkozik. Sikeres csere után az új jelszó hashelve tárolódik, a régivel bejelentkezés nem lehetséges. A jelszó semmilyen válaszban nem jelenik meg.",
+          "acceptance": [
+            "Helyes jelenlegi jelszóval és a BR-17-nek megfelelő új jelszóval a csere sikeres.",
+            "Hibás jelenlegi jelszó esetén AUTH_OLD_PASSWORD_MISMATCH hibakód érkezik 400-as státusszal, a jelszó nem változik.",
+            "Kevesebb mint 8 karakteres vagy karakterosztályt nélkülöző új jelszó esetén AUTH_WEAK_PASSWORD hibakód érkezik 400-as státusszal.",
+            "Sikeres csere után a régi jelszóval indított bejelentkezés AUTH_INVALID_CREDENTIALS hibát ad.",
+            "Az új jelszó nem egyezhet meg a jelenlegivel; ekkor VALIDATION_ERROR hibakód érkezik 400-as státusszal."
+          ],
+          "dod": [
+            "A jelszócsere az új jelszót bcrypt-tel hashelve tárolja.",
+            "A végpont az OpenAPI leírásban szerepel a hibakódokkal.",
+            "A régi jelszó ellenőrzése szerveroldalon történik.",
+            "A válasz nem tartalmaz jelszót vagy hash-t."
+          ]
+        },
+        {
+          "code": "E2-S7",
+          "title": "Szerepkör-alapú jogosultság-ellenőrzés az API-n",
+          "points": 5,
+          "priority": "urgent",
+          "requirements": ["FR-108", "BR-20"],
+          "depends_on": ["E2-S2"],
+          "description": "Az API szerveroldalon ellenőrizze a szerepkör-alapú jogosultságot minden védett műveletnél (FR-108). A szerepkörhöz nem tartozó művelet FORBIDDEN hibakódot adjon 403-as státusszal, magyar és angol üzenettel. A VASARLO szerepkör nem hozhat létre eseményt, a SZERVEZO csak a saját eseményeit kezelheti (BR-20). Az ellenőrzés ne csak a felületen elrejtett gomb legyen, hanem minden védett végponton.",
+          "acceptance": [
+            "VASARLO szerepkörű felhasználóval indított eseménylétrehozás FORBIDDEN hibakódot ad 403-as státusszal.",
+            "SZERVEZO szerepkörű felhasználó más szervező eseményének módosításakor FORBIDDEN hibakódot kap 403-as státusszal.",
+            "Az ADMIN szerepkör minden eseményt és felhasználót kezelhet, a műveletek sikeresek.",
+            "Az Accept-Language: en fejléc mellett a FORBIDDEN hiba angol messageEn szöveget ad, a code változatlan.",
+            "Hiányzó vagy érvénytelen access tokennel a védett végpont UNAUTHENTICATED hibakódot ad 401-es státusszal."
+          ],
+          "dod": [
+            "A szerepkör-ellenőrzés központi middleware-ben történik, nem végpontonként ismételve.",
+            "A szerepkör-mátrix a hatókör-dokumentum szerint érvényesül.",
+            "Az egyes végpontok jogosultsági igénye az OpenAPI leírásban dokumentált.",
+            "A védett végpontok szerveroldali ellenőrzése tesztesettel igazolt."
+          ]
+        },
+        {
+          "code": "E2-S8",
+          "title": "Inaktív felhasználó kizárása",
+          "points": 3,
+          "priority": "high",
+          "requirements": ["FR-109", "BR-21"],
+          "depends_on": ["E2-S2"],
+          "description": "Az admin által deaktivált felhasználó (isActive = false) nem tud bejelentkezni, tokent megújítani és foglalást létrehozni (FR-109, BR-21). A korábban kiadott tokenjei érvénytelenné válnak. A bejelentkezés AUTH_USER_INACTIVE hibakódot ad 403-as státusszal. Az inaktiv@jegyzo.local seed felhasználó ennek tesztelésére szolgál.",
+          "acceptance": [
+            "Az inaktiv@jegyzo.local felhasználó helyes jelszóval sem tud bejelentkezni, AUTH_USER_INACTIVE hibakódot kap 403-as státusszal.",
+            "A deaktiválás előtt kiadott access tokennel indított védett kérés UNAUTHENTICATED vagy AUTH_USER_INACTIVE hibát ad.",
+            "Inaktív felhasználó refresh tokenjével a megújítás elutasított.",
+            "Inaktív felhasználóval indított foglaláslétrehozás FORBIDDEN hibakódot ad 403-as státusszal.",
+            "Újra aktivált felhasználó ismét sikeresen bejelentkezhet."
+          ],
+          "dod": [
+            "Az isActive ellenőrzés minden hitelesítési és engedélyezési ponton érvényesül.",
+            "A token-ellenőrzés az aktuális isActive állapotot szerveroldalon olvassa.",
+            "A végpontok az OpenAPI leírásban szerepelnek a hibakódokkal.",
+            "A viselkedés a seed 7. felhasználóján dokumentált tesztesettel igazolt."
+          ]
+        }
+      ]
+    },
+    {
+      "code": "E3",
+      "title": "Eseménykatalógus és keresés",
+      "goal": "A látogató megtalálja a számára érdekes eseményt: böngészhet a nyilvános listában, kereshet és szűrhet kategória, város, helyszín, dátum és ár szerint, rendezhet és lapozhat. Az epic része az esemény részletei nézet, valamint a lemondott és lejárt események helyes kezelése. A katalógus bejelentkezés nélkül is elérhető, és a vásárlási lánc belépési pontja.",
+      "stories": [
+        {
+          "code": "E3-S1",
+          "title": "Nyilvános eseménylista",
+          "points": 5,
+          "priority": "urgent",
+          "requirements": ["FR-201"],
+          "depends_on": ["E1-S4"],
+          "description": "A katalógus bejelentkezés nélkül listázza a PUBLIKALT állapotú, jövőbeli eseményeket (FR-201, BR-27). A lista elemei tartalmazzák az esemény nevét, kategóriáját, helyszínét, kezdését és a legkisebb vásárolható árat. A PISZKOZAT, LEZAJLT és LEMONDVA állapotú események nem jelennek meg. Az ERTEKESITES_SZUNETELT események listázhatók, de nem vásárolhatók. Az adatok a seed szerintiek.",
+          "acceptance": [
+            "Bejelentkezés nélkül a lista a PUBLIKALT állapotú, jövőbeli eseményeket adja vissza, a seedből az 1., 2., 3., 4. és 8. eseményt.",
+            "A PISZKOZAT (5., 10.), LEZAJLT (6.) és LEMONDVA (7.) esemény nem szerepel a listában.",
+            "Az ERTEKESITES_SZUNETELT (9.) esemény szerepel a listában, de nem vásárolható.",
+            "A lista minden eleme tartalmazza a nevet, kategóriát, helyszínt, kezdést és a legkisebb vásárolható árat.",
+            "A válasz a nyilvános nézetben nem tartalmaz belső adatot, például a szervező azonosítóját."
+          ],
+          "dod": [
+            "A végpont az OpenAPI leírásban szerepel, bejelentkezés nélkül elérhetőként jelölve.",
+            "A szűrés állapotra és kezdésre adatbázis-lekérdezés szintjén történik.",
+            "A lista válaszsémája dokumentált.",
+            "A seed eseményeire vonatkozó elvárás tesztesettel igazolt."
+          ]
+        },
+        {
+          "code": "E3-S2",
+          "title": "Szöveges keresés ékezetfüggetlen egyezéssel",
+          "points": 5,
+          "priority": "high",
+          "requirements": ["FR-202"],
+          "depends_on": ["E3-S1"],
+          "description": "A keresés az eseménynévre, előadóra és helyszínnévre illeszkedik, kis-nagybetűtől és ékezettől függetlenül, részleges egyezéssel is (FR-202). A keresés a nyilvános listával kombinálható. Az ékezetfüggetlen egyezés biztosítja, hogy ékezet nélküli bemenet is megtalálja az ékezetes neveket. Üres keresőkifejezés esetén a lista szűretlen marad.",
+          "acceptance": [
+            "A beethoven keresés megtalálja a Beethoven: IX. szimfónia eseményt.",
+            "A BEETHOVEN és a Betthoven jellegű kis-nagybetű-eltérésű bemenet ugyanazt az eredményt adja, mint az eredeti írásmód.",
+            "A muzeum vagy müpa ékezet nélküli bemenet is megtalálja a Müpa helyszínű eseményt.",
+            "Részleges bemenet, például rock, találatot ad a Budapest Rock Fesztivál 2026 eseményre.",
+            "Nem egyező keresőkifejezésre üres lista érkezik, nem hiba."
+          ],
+          "dod": [
+            "Az ékezet- és kis-nagybetű-független illesztés megoldása dokumentált.",
+            "A keresés a nevet, előadót és helyszínnevet egyaránt vizsgálja.",
+            "A végpont az OpenAPI leírásban szerepel.",
+            "A keresés a seed ékezetes adatán is igazolt."
+          ]
+        },
+        {
+          "code": "E3-S3",
+          "title": "Szűrés kategóriára, városra és helyszínre",
+          "points": 3,
+          "priority": "high",
+          "requirements": ["FR-203"],
+          "depends_on": ["E3-S1"],
+          "description": "A lista szűrhető kategóriára (KONCERT, SZINHAZ, SPORT, FESZTIVAL, EGYEB), városra és helyszínre (FR-203). Egy szűrőn belül több érték is megadható, közöttük logikai VAGY kapcsolat érvényesül. A különböző szűrők között logikai ÉS kapcsolat van. Az érvénytelen kategóriaérték VALIDATION_ERROR hibakódot ad.",
+          "acceptance": [
+            "A KONCERT kategóriára szűrve csak a koncert események jelennek meg.",
+            "Több kategória megadásakor, például KONCERT és SZINHAZ, a két halmaz uniója jelenik meg.",
+            "A Budapest városra szűrve csak a budapesti helyszínű események jelennek meg.",
+            "Város és kategória együttes megadásakor a metszet jelenik meg, logikai ÉS szerint.",
+            "Érvénytelen kategóriaérték esetén VALIDATION_ERROR hibakód érkezik 400-as státusszal."
+          ],
+          "dod": [
+            "A szűrőparaméterek az OpenAPI leírásban dokumentáltak.",
+            "Az azonos szűrőn belüli VAGY és a szűrők közötti ÉS szemantika tesztesettel igazolt.",
+            "Az érvénytelen felsorolási érték kezelése egységes.",
+            "A szűrés a nyilvános listával kombinálható."
+          ]
+        },
+        {
+          "code": "E3-S4",
+          "title": "Szűrés dátumtartományra",
+          "points": 2,
+          "priority": "high",
+          "requirements": ["FR-204"],
+          "depends_on": ["E3-S1"],
+          "description": "A lista szűrhető kezdés szerinti tól és ig dátumtartományra (FR-204). A határok inkluzívak. A tartomány a seed relatív kezdésideihez képest is értelmezhető. Érvénytelen dátumformátum VALIDATION_ERROR hibakódot ad. Ha a tól későbbi, mint az ig, a rendszer hibát jelez.",
+          "acceptance": [
+            "A tól és ig határok inkluzívak: a pontosan a határra eső kezdésű esemény is megjelenik.",
+            "Csak tól megadásakor a megadott időpont utáni összes esemény megjelenik.",
+            "Ha a tól értéke nagyobb, mint az ig, akkor VALIDATION_ERROR hibakód érkezik 400-as státusszal.",
+            "Érvénytelen dátumformátum esetén VALIDATION_ERROR hibakód érkezik 400-as státusszal.",
+            "A dátumok értelmezése az Europe/Budapest időzónában történik."
+          ],
+          "dod": [
+            "A dátumparaméterek formátuma az OpenAPI leírásban dokumentált.",
+            "Az inkluzív határkezelés tesztesettel igazolt.",
+            "Az időzóna-kezelés a dokumentált beállítást használja.",
+            "A dátumtartomány szűrő a többi szűrővel kombinálható."
+          ]
+        },
+        {
+          "code": "E3-S5",
+          "title": "Szűrés ártartományra",
+          "points": 3,
+          "priority": "medium",
+          "requirements": ["FR-205", "FR-405"],
+          "depends_on": ["E5-S5"],
+          "description": "A lista szűrhető az esemény legkisebb aktív jegyára (FR-205, FR-405) alapján. Az ár HUF-ban, egész szám, a határok inkluzívak. Azon események, amelyeknek nincs aktív jegytípusa, nem adnak árat, és árszűrés mellett nem jelennek meg. A legkisebb ár számítása az FR-405 szerint történik. Érvénytelen árérték VALIDATION_ERROR hibakódot ad.",
+          "acceptance": [
+            "A 12 500 Ft felső határra szűrve csak azok az események jelennek meg, amelyek legkisebb aktív jegyára legfeljebb 12 500 Ft.",
+            "Az 1. esemény legkisebb aktív jegyára 7 500 Ft, ezért egy 8 000 Ft-os felső határnál is megjelenik.",
+            "A 2. esemény legkisebb aktív jegyára 8 500 Ft, ezért egy 8 000 Ft-os felső határnál már nem jelenik meg.",
+            "Negatív vagy nem egész árérték esetén VALIDATION_ERROR hibakód érkezik 400-as státusszal.",
+            "Alsó és felső határ együttes megadásakor mindkét határ inkluzív."
+          ],
+          "dod": [
+            "A legkisebb aktív ár számítása az FR-405 szerint, csak aktív jegytípusokból történik.",
+            "Az árszűrő paraméterek az OpenAPI leírásban dokumentáltak.",
+            "A határértékek tesztesettel igazoltak.",
+            "Az árszűrő a többi szűrővel kombinálható."
+          ]
+        },
+        {
+          "code": "E3-S6",
+          "title": "„Van szabad hely” szűrő",
+          "points": 3,
+          "priority": "medium",
+          "requirements": ["FR-206", "BR-03"],
+          "depends_on": ["E4-S2"],
+          "description": "A „Csak ahol van szabad hely” kapcsoló szűri a listát az elérhető kapacitás alapján (FR-206, BR-03). Ülőhelyes szektornál a SZABAD állapotú székek száma, állóhelynél a maradék kapacitás (capacity mínusz eladott és zárolt darabszám) számít. A szűrő csak olyan eseményeket ad, ahol legalább egy hely elérhető. Az értékesítési ablakon kívüli események nem számítanak elérhetőnek.",
+          "acceptance": [
+            "A 8. eseményre, ahol 10 a kapacitás, 6 a foglalt és 4 a szabad, a szűrő mellett az esemény megjelenik.",
+            "Ha egy állóhelyes jegytípusnál az eladott és zárolt darabszám eléri a kapacitást, az esemény nem jelenik meg a szűrő mellett.",
+            "Ülőhelyes eseménynél a szabad helyek száma a SZABAD állapotú SeatState rekordokból számít.",
+            "Az ERTEKESITES_SZUNETELT esemény a szűrő mellett nem jelenik meg elérhetőként.",
+            "A szűrő kikapcsolásakor a lista változatlan, teljes."
+          ],
+          "dod": [
+            "A szabad kapacitás számítása a domain számítási szabályai szerint történik.",
+            "Az állóhely és ülőhely eset elkülönítve kezelt.",
+            "A szűrő a többi szűrővel kombinálható.",
+            "A viselkedés a seed 8. eseményén tesztesettel igazolt."
+          ]
+        },
+        {
+          "code": "E3-S7",
+          "title": "Rendezés ár, dátum és népszerűség szerint",
+          "points": 2,
+          "priority": "medium",
+          "requirements": ["FR-207"],
+          "depends_on": ["E3-S1"],
+          "description": "A lista rendezhető kezdés szerint növekvő és csökkenő sorrendben, legkisebb ár szerint, valamint népszerűség (eladott jegyek száma) szerint (FR-207). Az alapértelmezett rendezés a kezdés szerint növekvő. Az ismeretlen rendezési kulcs VALIDATION_ERROR hibakódot ad. Az árhoz a legkisebb aktív jegyár, a népszerűséghez az eladott jegyek száma használatos.",
+          "acceptance": [
+            "Alapértelmezésben a lista kezdés szerint növekvő sorrendben érkezik.",
+            "Kezdés szerint csökkenő rendezésnél a legkésőbbi kezdésű esemény az első.",
+            "Legkisebb ár szerint rendezve a 4 500 Ft-os legkisebb árú esemény az első.",
+            "Népszerűség szerint rendezve az 1. esemény, három fizetett foglalással, megelőzi a kevesebb eladott jeggyel rendelkezőket.",
+            "Ismeretlen rendezési kulcs esetén VALIDATION_ERROR hibakód érkezik 400-as státusszal."
+          ],
+          "dod": [
+            "A rendezési kulcsok az OpenAPI leírásban dokumentáltak.",
+            "Az alapértelmezett rendezés és a stabil sorrend tesztesettel igazolt.",
+            "A népszerűség számítása az eladott jegyek számán alapul.",
+            "A rendezés a szűrőkkel együtt működik."
+          ]
+        },
+        {
+          "code": "E3-S8",
+          "title": "Lapozás",
+          "points": 2,
+          "priority": "high",
+          "requirements": ["FR-208"],
+          "depends_on": ["E3-S1"],
+          "description": "A lista lapozott, alapértelmezés szerint 12 elem/oldal, a méret 12/24/48 értékre állítható (FR-208). A válasz tartalmazza az összes elem számát és az elérhető oldalak számát. Érvénytelen, túl nagy oldalra üres lista érkezik, nem hiba. Az érvénytelen lapméret VALIDATION_ERROR hibakódot ad.",
+          "acceptance": [
+            "Az alapértelmezett lapméret 12 elem, a válasz megadja az összes elemszámot.",
+            "A lapméret 12, 24 vagy 48 értékre állítható, más értékre VALIDATION_ERROR hibakód érkezik 400-as státusszal.",
+            "A létezőnél nagyobb oldalszámra üres lista érkezik 200-as státusszal, nem hibával.",
+            "A page és pageSize paraméterek együtt adják a megfelelő szeletet, átfedés és kihagyás nélkül.",
+            "A lapozás a szűréssel és rendezéssel együtt konzisztens eredményt ad."
+          ],
+          "dod": [
+            "A lapozási paraméterek az OpenAPI leírásban dokumentáltak.",
+            "Az érvénytelen oldal és lapméret kezelése tesztesettel igazolt.",
+            "A válasz metaadatot, azaz összes elemszámot és oldalszámot tartalmaz.",
+            "A lapozás determinisztikus sorrend mellett működik."
+          ]
+        },
+        {
+          "code": "E3-S9",
+          "title": "Esemény részletei oldal",
+          "points": 5,
+          "priority": "urgent",
+          "requirements": ["FR-209"],
+          "depends_on": ["E3-S1"],
+          "description": "Az esemény részletei nézet megjeleníti a nevet, kategóriát, helyszínt, címet, kezdést, kapunyitást, leírást, plakátot, a jegytípusokat áraikkal és a szabad helyek számát (FR-209). A nézet bejelentkezés nélkül is elérhető. Nem létező esemény azonosítóra EVENT_NOT_FOUND hibakód érkezik. A megjelenített árak a legkisebb vásárolható árat is tartalmazzák.",
+          "acceptance": [
+            "A részletei nézet bejelentkezés nélkül elérhető, és tartalmazza a nevet, kategóriát, helyszínt, címet, kezdést, kapunyitást, leírást, plakátot, jegytípusokat és a szabad helyek számát.",
+            "Nem létező esemény azonosítóra EVENT_NOT_FOUND hibakód érkezik 404-es státusszal.",
+            "A jegytípusok listája áraikkal és a legkisebb vásárolható árral együtt jelenik meg.",
+            "A szabad helyek száma ülőhelyes szektornál a SZABAD székekből, állóhelynél a maradék kapacitásból számít.",
+            "Nem szám azonosítóra VALIDATION_ERROR hibakód érkezik 400-as státusszal."
+          ],
+          "dod": [
+            "A végpont az OpenAPI leírásban szerepel a válaszsémával.",
+            "A megjelenített mezők köre a domain adatmodell szerint dokumentált.",
+            "Az FR-209 mezői maradéktalanul szerepelnek a válaszban.",
+            "A részletei nézet a seed 1. eseményén ellenőrzött."
+          ]
+        },
+        {
+          "code": "E3-S10",
+          "title": "Lemondott és lejárt esemény kezelése",
+          "points": 3,
+          "priority": "high",
+          "requirements": ["FR-210", "FR-908", "BR-06", "BR-27"],
+          "depends_on": ["E9-S3"],
+          "description": "A lemondott esemény a listában nem jelenik meg, de közvetlen linkkel megnyitva jelöléssel, „Az eseményt lemondták” felirattal, vásárlási lehetőség nélkül megjelenik (FR-210, BR-06). Lemondott eseményre nem hozható létre foglalás (FR-908), a LEZAJLT esemény adatai nem szerkeszthetők (BR-27). A LEZAJLT esemény szintén nem vásárolható. Az esemény lejártát az endsAt (startsAt + durationMinutes) elmúlása jelzi.",
+          "acceptance": [
+            "A LEMONDVA állapotú 7. esemény a listában nem jelenik meg, de közvetlen linkkel megnyitva „Az eseményt lemondták” jelöléssel megjelenik.",
+            "A lemondott eseményre indított foglaláslétrehozás EVENT_CANCELLED hibakódot ad 409-es státusszal.",
+            "A LEZAJLT állapotú 6. esemény nem jelenik meg a listában, és vásárlásra EVENT_NOT_ON_SALE hibakódot ad 409-es státusszal.",
+            "A LEZAJLT esemény adatainak módosítása EVENT_INVALID_STATE hibakódot ad 409-es státusszal.",
+            "A lemondott esemény részletei nézetében a vásárlási lehetőség nem jelenik meg.",
+            "Egy PUBLIKALT esemény az endsAt elmúltával automatikusan LEZAJLT állapotba kerül."
+          ],
+          "dod": [
+            "A lemondott és lejárt esemény kezelése az esemény állapotgépe szerint történik.",
+            "A közvetlen linkkel megnyitott lemondott esemény jelölése magyar és angol nyelven is megjelenik.",
+            "Az EVENT_CANCELLED, EVENT_NOT_ON_SALE és EVENT_INVALID_STATE hibakódok az OpenAPI leírásban szerepelnek.",
+            "A viselkedés a seed 6. és 7. eseményén tesztesettel igazolt."
+          ]
+        }
+      ]
+    }
+  ]
+}

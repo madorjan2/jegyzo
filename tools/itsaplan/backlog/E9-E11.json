@@ -1,0 +1,701 @@
+{
+  "epics": [
+    {
+      "code": "E9",
+      "title": "Admin backoffice",
+      "goal": "A szervezők és adminisztrátorok munkafelülete: események, jegytípusok, felhasználók, foglalások és statisztikák kezelése. Az epic lefedi a szerepkör-alapú jogosultsági különbséget is: a szervező kizárólag a saját eseményeit kezeli, az adminisztrátor minden erőforrást. A backoffice adja az esemény lemondásához és a visszatérítéshez szükséges belépési pontot.",
+      "stories": [
+        {
+          "code": "E9-S1",
+          "title": "Esemény létrehozása",
+          "points": 5,
+          "priority": "urgent",
+          "requirements": [
+            "FR-801"
+          ],
+          "depends_on": [
+            "E4-S1"
+          ],
+          "description": "Szervező vagy admin új eseményt hoz létre a backoffice-ban. A megadott adatok a name, category, venueId, startsAt, durationMinutes, doorsOpenAt, description, posterUrl és az értékesítési ablak. Az esemény helyszíne kizárólag aktív Venue lehet, a létrehozó szerepköre SZERVEZO vagy ADMIN. Az új esemény mindig PISZKOZAT állapotban jön létre, nyilvánosan nem jelenik meg, és az organizerUserId alapértelmezésben a létrehozó.",
+          "acceptance": [
+            "Érvényes adatokkal (name, category, venueId, startsAt, durationMinutes, description) a létrehozott esemény status értéke PISZKOZAT, és a nyilvános katalógusban nem jelenik meg.",
+            "A létrehozott esemény organizerUserId mezője a létrehozó felhasználó, feltéve hogy annak szerepköre SZERVEZO vagy ADMIN.",
+            "Inaktív helyszínre (isActive = false, pl. az 5. helyszín) indított létrehozás VENUE_INACTIVE hibakóddal 409-es státusszal elutasításra kerül, esemény nem jön létre.",
+            "Hiányzó vagy érvénytelen kötelező mező (üres name, 50 karakternél rövidebb description) esetén a válasz VALIDATION_ERROR hibakódot ad 400-as státusszal.",
+            "A 30 percnél rövidebb vagy 600 percnél hosszabb durationMinutes érték VALIDATION_ERROR hibát ad.",
+            "VASARLO szerepkörű felhasználó hívására a válasz FORBIDDEN hibakód 403-as státusszal, esemény nem jön létre."
+          ],
+          "dod": [
+            "Az esemény-létrehozó végpont szerepel az OpenAPI leírásban a PISZKOZAT kezdőállapottal és a VENUE_INACTIVE, VALIDATION_ERROR, FORBIDDEN hibakódokkal.",
+            "Az esemény rekord minden, a 02. domain szótárban kötelezőként jelölt mezőt tartalmaz.",
+            "A végpont szerveroldali szerepkör-ellenőrzést végez, nem csak a felületen elrejtett vezérlőt.",
+            "Létezik automatizált teszt érvényes adatra és inaktív helyszínes elutasításra."
+          ]
+        },
+        {
+          "code": "E9-S2",
+          "title": "Esemény szerkesztése állapotfüggő korlátokkal",
+          "points": 5,
+          "priority": "urgent",
+          "requirements": [
+            "FR-802",
+            "BR-11"
+          ],
+          "depends_on": [
+            "E9-S1"
+          ],
+          "description": "A backoffice-ban a PISZKOZAT, PUBLIKALT és ERTEKESITES_SZUNETELT állapotú esemény adatai szerkeszthetők, a LEZAJLT és LEMONDVA állapotúak nem (BR-11). A módosítás kiterjed az alapadatokra és az értékesítési ablakra. A jogosultsági korlát szerint a szervező kizárólag a saját eseményét szerkesztheti, az admin bármelyiket.",
+          "acceptance": [
+            "A PISZKOZAT, PUBLIKALT és ERTEKESITES_SZUNETELT állapotú esemény adatai szerkesztéssel módosíthatók (a 9. esemény ERTEKESITES_SZUNETELT állapotban szerkeszthető).",
+            "LEZAJLT vagy LEMONDVA állapotú esemény (pl. a 6. esemény) szerkesztése EVENT_INVALID_STATE hibakóddal 409-es státusszal elutasításra kerül, BR-11 szerint.",
+            "Szervező SZERVEZO szerepkörrel kizárólag az organizerUserId = saját id eseményét szerkesztheti; más szervező eseményére FORBIDDEN hibakód 403-as státusszal (FR-813).",
+            "Érvénytelen mezőérték (üres name, 4000 karakternél hosszabb description) esetén a válasz VALIDATION_ERROR 400-as státusszal.",
+            "Admin bármely szerkeszthető állapotú eseményt módosíthat, függetlenül az organizerUserId értékétől."
+          ],
+          "dod": [
+            "A szerkesztő végpont állapotfüggő korlátot kényszerít ki a szerveroldalon, nem csak a felületen.",
+            "Az OpenAPI leírás tartalmazza az EVENT_INVALID_STATE és FORBIDDEN hibakódokat.",
+            "Létezik teszt a három szerkeszthető és a két tiltott állapotra.",
+            "Létezik teszt a szervezői tulajdonjog-ellenőrzésre."
+          ]
+        },
+        {
+          "code": "E9-S3",
+          "title": "Esemény publikálása",
+          "points": 5,
+          "priority": "urgent",
+          "requirements": [
+            "FR-803",
+            "BR-19"
+          ],
+          "depends_on": [
+            "E9-S2",
+            "E5-S3"
+          ],
+          "description": "A PISZKOZAT állapotú esemény publikálható, ha a BR-19 minden feltétele teljesül: van legalább egy aktív jegytípus, a helyszín aktív, a kezdés a jövőben van, az értékesítési ablak érvényes (BR-23), és a leírás hossza megfelelő. Sikeres publikálás után az esemény PUBLIKALT állapotba kerül, a publishedAt kitöltődik, és a székek SZABAD állapotba kerülnek.",
+          "acceptance": [
+            "Minden BR-19 feltétel teljesülése esetén a publikálás sikeres, az esemény status értéke PUBLIKALT lesz, és a publishedAt mező kitöltődik.",
+            "Sikeres publikálás után az esemény minden SeatState rekordja SZABAD állapotú.",
+            "Ha nincs aktív jegytípus, a publikálás EVENT_PUBLISH_VALIDATION_FAILED hibakóddal 409-es státusszal elutasításra kerül.",
+            "Érvénytelen értékesítési ablak (salesStartAt >= salesEndAt vagy salesEndAt > startsAt) esetén a válasz EVENT_PUBLISH_VALIDATION_FAILED 409-es státusszal, BR-23 szerint.",
+            "Múltbeli startsAt esetén a publikálás EVENT_PUBLISH_VALIDATION_FAILED hibát ad (BR-11).",
+            "Szervező más szervező eseményének publikálásakor FORBIDDEN hibakód 403-as státusszal."
+          ],
+          "dod": [
+            "A publikálás feltételei egyetlen, szerveroldali ellenőrzésben, tranzakcióban kerülnek kiértékelésre.",
+            "Az OpenAPI leírás felsorolja az EVENT_PUBLISH_VALIDATION_FAILED és FORBIDDEN hibakódokat.",
+            "Létezik teszt a sikeres publikálásra és a hiányzó aktív jegytípusra.",
+            "A publikált esemény megjelenik a nyilvános katalógusban."
+          ]
+        },
+        {
+          "code": "E9-S4",
+          "title": "Értékesítés szüneteltetése és folytatása",
+          "points": 3,
+          "priority": "medium",
+          "requirements": [
+            "FR-804"
+          ],
+          "depends_on": [
+            "E9-S3"
+          ],
+          "description": "A PUBLIKALT állapotú esemény értékesítése szüneteltethető (ERTEKESITES_SZUNETELT), majd onnan folytatható (PUBLIKALT). A szüneteltetett eseményre nem lehet új foglalást létrehozni, de a már kiállított jegyek érvényesek maradnak (BR-25). A művelet a jogosultsági korlátnak megfelelően a saját eseményre végezhető el.",
+          "acceptance": [
+            "PUBLIKALT esemény értékesítésének szüneteltetése után az esemény status értéke ERTEKESITES_SZUNETELT.",
+            "ERTEKESITES_SZUNETELT esemény folytatása után az esemény status értéke újra PUBLIKALT.",
+            "Szüneteltetett eseményre indított foglalás EVENT_NOT_ON_SALE hibakóddal 409-es státusszal elutasításra kerül.",
+            "Szüneteltetéskor a már kiállított jegyek ERVENYES állapotban maradnak (BR-25).",
+            "LEZAJLT vagy LEMONDVA eseményen a művelet EVENT_INVALID_STATE hibakóddal 409-es státusszal elutasításra kerül.",
+            "Szervező más szervező eseményének szüneteltetésekor FORBIDDEN hibakód 403-as státusszal."
+          ],
+          "dod": [
+            "A két állapotátmenet (PUBLIKALT ↔ ERTEKESITES_SZUNETELT) szerveroldalon, állapotgéppel kényszerített.",
+            "Az OpenAPI leírás tartalmazza az EVENT_NOT_ON_SALE és EVENT_INVALID_STATE hibakódokat.",
+            "Létezik teszt a szüneteltetés és a folytatás utáni vásárlási viselkedésre.",
+            "Létezik teszt a szervezői jogosultsági korlátra."
+          ]
+        },
+        {
+          "code": "E9-S5",
+          "title": "Esemény törlése",
+          "points": 2,
+          "priority": "medium",
+          "requirements": [
+            "FR-805"
+          ],
+          "depends_on": [
+            "E9-S1"
+          ],
+          "description": "Kizárólag PISZKOZAT állapotú esemény törölhető. A törölt esemény sem a backoffice listákban, sem a nyilvános katalógusban nem jelenik meg, és azonosítójára a további műveletek NOT_FOUND hibát adnak. A szervező csak a saját PISZKOZAT eseményét törölheti, az admin bármelyiket.",
+          "acceptance": [
+            "PISZKOZAT állapotú esemény törlése sikeres, és az esemény a további listákból eltűnik.",
+            "Nem PISZKOZAT állapotú esemény (pl. PUBLIKALT) törlése EVENT_INVALID_STATE hibakóddal 409-es státusszal elutasításra kerül.",
+            "Szervező más szervező PISZKOZAT eseményének törlésekor FORBIDDEN hibakód 403-as státusszal.",
+            "Törölt vagy nem létező esemény azonosítójára indított művelet NOT_FOUND hibakódot ad 404-es státusszal.",
+            "Admin bármely PISZKOZAT eseményt törölhet, függetlenül az organizerUserId értékétől."
+          ],
+          "dod": [
+            "A törlést a rendszer tranzakcióban hajtja végre, a kapcsolódó rekordokkal konzisztensen (NFR-15).",
+            "Az OpenAPI leírás tartalmazza az EVENT_INVALID_STATE és NOT_FOUND hibakódokat.",
+            "Létezik teszt PISZKOZAT törlésére és publikált esemény elutasítására.",
+            "Létezik teszt a szervezői jogosultsági korlátra."
+          ]
+        },
+        {
+          "code": "E9-S6",
+          "title": "Eseménylista szűréssel",
+          "points": 3,
+          "priority": "high",
+          "requirements": [
+            "FR-806",
+            "BR-20"
+          ],
+          "depends_on": [
+            "E9-S1"
+          ],
+          "description": "A backoffice eseménylistája szűrhető állapotra, helyszínre, szervezőre és dátumra. A jogosultsági korlát szerint a szervező kizárólag a saját eseményeit látja, az admin minden eseményt (BR-20). A lista a publikus katalógustól eltérően a nem publikált és lezárt eseményeket is tartalmazza.",
+          "acceptance": [
+            "A lista szűrhető status, venueId, organizerUserId és dátumtartomány szerint.",
+            "Szervező SZERVEZO szerepkörrel kizárólag a saját eseményeit látja, admin minden eseményt (BR-20).",
+            "A 10. esemény (PISZKOZAT) és a 6. esemény (LEZAJLT) megjelenik az admin listájában, míg a nyilvános katalógusban nem.",
+            "Érvénytelen status értékkel adott szűrő VALIDATION_ERROR hibakódot ad 400-as státusszal.",
+            "Szűrő nélküli hívás a jogosult események teljes listáját adja vissza.",
+            "Üres találat üres listát ad, nem hibát."
+          ],
+          "dod": [
+            "A jogosultsági szűrés szerveroldalon, a lekérdezés részeként érvényesül, nem utólagos szűréssel.",
+            "Az OpenAPI leírás dokumentálja a szűrőparamétereket és a VALIDATION_ERROR hibakódot.",
+            "Létezik teszt a szervezői és admin látókör különbségére.",
+            "Létezik teszt az egyes szűrőparaméterekre."
+          ]
+        },
+        {
+          "code": "E9-S7",
+          "title": "Felhasználók listázása és keresése",
+          "points": 3,
+          "priority": "medium",
+          "requirements": [
+            "FR-807"
+          ],
+          "depends_on": [
+            "E2-S7"
+          ],
+          "description": "Az admin listázhatja a felhasználókat és kereshet e-mail vagy név szerint. A keresés kis-nagybetűtől független. A válasz nem tartalmazhat jelszóhoz kapcsolódó adatot (NFR-06). A művelet adminisztrátori jogosultságot igényel.",
+          "acceptance": [
+            "Admin listázhatja a felhasználókat, és kereshet e-mail vagy fullName szerint.",
+            "A keresés kis-nagybetűtől független: a john smith kifejezés megtalálja a 6. felhasználót, az admin@jegyzo.local pedig az 1. felhasználót.",
+            "Nem admin (VASARLO vagy SZERVEZO) hívás FORBIDDEN hibakódot ad 403-as státusszal (BR-20).",
+            "A válasz egyetlen felhasználónál sem tartalmaz passwordHash mezőt (NFR-06).",
+            "Nincs találat esetén a válasz üres lista, nem hiba."
+          ],
+          "dod": [
+            "A végpont szerveroldali szerepkör-ellenőrzést végez.",
+            "A válasz DTO nem tartalmaz jelszóhoz kapcsolódó mezőt.",
+            "Az OpenAPI leírás dokumentálja a keresési paramétereket és a FORBIDDEN hibakódot.",
+            "Létezik teszt az ékezet- és kis-nagybetű-független keresésre."
+          ]
+        },
+        {
+          "code": "E9-S8",
+          "title": "Felhasználó szerepkörének módosítása",
+          "points": 3,
+          "priority": "medium",
+          "requirements": [
+            "FR-808"
+          ],
+          "depends_on": [
+            "E9-S7"
+          ],
+          "description": "Az admin módosíthatja a felhasználó role értékét VASARLO, SZERVEZO és ADMIN között. Védelmi szabály, hogy az admin önmagát nem minősítheti le, ha ő az egyetlen ADMIN. A szerepkörváltás a szerveroldalon érvényesül, így a későbbi jogosultsági ellenőrzések az új szerepkör szerint futnak.",
+          "acceptance": [
+            "Admin a célfelhasználó role mezőjét VASARLO, SZERVEZO vagy ADMIN értékre módosíthatja.",
+            "Ha a célfelhasználó az egyetlen ADMIN, a saját szerepkörének leminősítése elutasításra kerül, és a szerepkör változatlan marad.",
+            "Érvénytelen role érték (pl. USER) esetén a válasz VALIDATION_ERROR 400-as státusszal.",
+            "A szerepkörváltás után a felhasználó jogosultsági ellenőrzései az új szerepkör szerint futnak.",
+            "Nem admin hívás FORBIDDEN hibakódot ad 403-as státusszal."
+          ],
+          "dod": [
+            "Az egyetlen admin védelme szerveroldalon, tranzakcióban érvényesül.",
+            "Az OpenAPI leírás tartalmazza a megengedett role értékeket és a VALIDATION_ERROR, FORBIDDEN hibakódokat.",
+            "Létezik teszt a szerepkörváltásra és az egyetlen admin védelmére.",
+            "Létezik teszt érvénytelen szerepkör értékre."
+          ]
+        },
+        {
+          "code": "E9-S9",
+          "title": "Felhasználó aktiválása és deaktiválása",
+          "points": 3,
+          "priority": "medium",
+          "requirements": [
+            "FR-809",
+            "BR-21"
+          ],
+          "depends_on": [
+            "E9-S7",
+            "E2-S8"
+          ],
+          "description": "Az admin felhasználót deaktiválhat (isActive = false) és újra aktiválhat (isActive = true). A deaktivált felhasználó nem tud bejelentkezni, tokent megújítani és foglalást létrehozni, a korábbi tokenjei érvénytelenek (BR-21). A seed 7. felhasználója már inaktív.",
+          "acceptance": [
+            "Admin egy aktív felhasználót deaktiválhat, amitől annak isActive mezője false lesz.",
+            "Admin egy inaktív felhasználót újra aktiválhat, amitől annak isActive mezője true lesz.",
+            "Deaktivált (7.) felhasználó bejelentkezése AUTH_USER_INACTIVE hibakóddal 403-as státusszal elutasításra kerül (BR-21).",
+            "Deaktiválás után a felhasználó korábbi tokenjei érvénytelenek, a foglalás létrehozása tiltott (BR-21).",
+            "Nem admin hívás FORBIDDEN hibakódot ad 403-as státusszal.",
+            "Ismeretlen userId esetén a válasz NOT_FOUND hibakód 404-es státusszal."
+          ],
+          "dod": [
+            "A tokenek érvénytelenítése a deaktiválással egy tranzakcióban történik (NFR-15).",
+            "Az OpenAPI leírás tartalmazza az AUTH_USER_INACTIVE, FORBIDDEN és NOT_FOUND hibakódokat.",
+            "Létezik teszt a deaktiválás és az újraaktiválás hatására.",
+            "Létezik teszt a deaktivált felhasználó tokenjeinek érvénytelenségére."
+          ]
+        },
+        {
+          "code": "E9-S10",
+          "title": "Foglalások listázása és szűrése",
+          "points": 5,
+          "priority": "high",
+          "requirements": [
+            "FR-810"
+          ],
+          "depends_on": [
+            "E6-S1"
+          ],
+          "description": "A backoffice foglaláslistája szűrhető eseményre, állapotra és dátumtartományra. A jogosultsági korlát szerint a szervező kizárólag a saját eseményeihez tartozó foglalásokat látja, az admin mindet (BR-20). A lista a foglalás code, status és total adatait tartalmazza.",
+          "acceptance": [
+            "A lista szűrhető eventId, status és dátumtartomány szerint.",
+            "Szervező kizárólag a saját eseményeihez tartozó foglalásokat látja, admin minden foglalást (BR-20).",
+            "Az 1. eseményhez tartozó foglalások a listában a kód, a status és a total (pl. a 8. foglalás 25 500 Ft, FIZETVE) szerint jelennek meg.",
+            "Érvénytelen status értékkel adott szűrő VALIDATION_ERROR hibakódot ad 400-as státusszal.",
+            "Nem létező eseményre adott szűrő üres listát ad, nem hibát.",
+            "Vásárló hívására a végpont FORBIDDEN hibakódot ad 403-as státusszal, kivéve a saját foglalásait."
+          ],
+          "dod": [
+            "A szűrés és a jogosultsági korlát egyetlen szerveroldali lekérdezésben érvényesül.",
+            "Az OpenAPI leírás dokumentálja a szűrőparamétereket és a VALIDATION_ERROR hibakódot.",
+            "Létezik teszt a szervezői és admin látókör különbségére.",
+            "Létezik teszt az állapot- és dátumszűrésre."
+          ]
+        },
+        {
+          "code": "E9-S11",
+          "title": "Foglalás részleteinek megtekintése",
+          "points": 3,
+          "priority": "high",
+          "requirements": [
+            "FR-811"
+          ],
+          "depends_on": [
+            "E9-S10"
+          ],
+          "description": "A foglalás részletei oldal a BookingItem tételeket, a subtotal, serviceFee és total összegeket, a PaymentTransaction kísérleteket, a Ticket jegyeket és a hozzájuk tartozó Refund állapotát mutatja. A megtekintés a tulajdonosi korlátnak megfelelően a foglalás tulajdonosa, a foglalás eseményének szervezője vagy admin számára engedett (BR-20).",
+          "acceptance": [
+            "A részletek tartalmazzák a tételeket, a subtotal, serviceFee és total összegeket, a fizetési kísérleteket, a jegyeket és a visszatérítés állapotát.",
+            "A 7. esemény 8. foglalásának részletei a 11 250 Ft összegű, SIKERES státuszú Refund rekordot és a VISSZATERITVE foglalásállapotot mutatják.",
+            "Idegen foglalás megnyitása vásárlóként FORBIDDEN hibakódot ad 403-as státusszal (BR-20).",
+            "Szervező kizárólag a saját eseményéhez tartozó foglalás részleteit nyithatja meg; más esemény foglalására FORBIDDEN 403.",
+            "Ismeretlen bookingId esetén a válasz BOOKING_NOT_FOUND hibakód 404-es státusszal."
+          ],
+          "dod": [
+            "A részletek válasz a 02. domain szótár szerinti entitásokat fedi le.",
+            "Az OpenAPI leírás tartalmazza a FORBIDDEN és BOOKING_NOT_FOUND hibakódokat.",
+            "Létezik teszt a tulajdonosi, szervezői és admin hozzáférésre.",
+            "Létezik teszt a visszatérített foglalás részleteinek megjelenítésére."
+          ]
+        },
+        {
+          "code": "E9-S12",
+          "title": "Esemény statisztika",
+          "points": 5,
+          "priority": "medium",
+          "requirements": [
+            "FR-812"
+          ],
+          "depends_on": [
+            "E9-S10"
+          ],
+          "description": "Eseményenként a statisztika az eladott jegyszámot, a bevételt és a kihasználtság százalékot mutatja. A bevétel a LedgerEntry BEVETEL és VISSZATERITES bejegyzések különbségeként, a kihasználtság az eladott jegyek és az összes jegykapacitás arányaként számolódik. A jogosultsági korlát szerint a szervező csak a saját eseményére kap statisztikát.",
+          "acceptance": [
+            "A statisztika eseményenként az eladott jegyszámot, a bevételt és a kihasználtság százalékot tartalmazza.",
+            "Az 1. esemény bevétele a LedgerEntry bejegyzések alapján 58 900 Ft (25 500 + 23 250 + 10 150).",
+            "A 7. esemény bevétele 11 250 − 11 250 = 0 Ft a visszatérítés miatt.",
+            "A kihasználtság az eladott jegyek és az összes jegykapacitás hányadosaként, százalékban jelenik meg.",
+            "Szervező más szervező eseményére indított statisztika FORBIDDEN hibakódot ad 403-as státusszal (BR-20).",
+            "Ismeretlen eventId esetén a válasz EVENT_NOT_FOUND hibakód 404-es státusszal."
+          ],
+          "dod": [
+            "A bevétel és a kihasználtság számítása a 02. dokumentum 5. pont képleteit követi.",
+            "Az OpenAPI leírás dokumentálja a statisztika végpontot és a FORBIDDEN, EVENT_NOT_FOUND hibakódokat.",
+            "Létezik teszt az 1. és 7. esemény várt értékeire.",
+            "Létezik teszt a szervezői jogosultsági korlátra."
+          ]
+        },
+        {
+          "code": "E9-S13",
+          "title": "Szervezői jogosultsági korlát érvényesítése",
+          "points": 5,
+          "priority": "urgent",
+          "requirements": [
+            "FR-813"
+          ],
+          "depends_on": [
+            "E9-S2"
+          ],
+          "description": "A rendszer szerveroldalon érvényesíti, hogy szervező más szervező eseményét ne szerkeszthesse, publikálhassa vagy törölhesse. Az admin bármely eseményre jogosult. A jogosultsági korlát egységesen működik az eseménykezelő végpontokon, és a tiltott művelet FORBIDDEN választ ad a hozzá tartozó üzenettel.",
+          "acceptance": [
+            "Szervező más szervező eseményének szerkesztése FORBIDDEN hibakóddal 403-as státusszal elutasításra kerül (FR-813).",
+            "Szervező más szervező eseményének publikálása FORBIDDEN hibakóddal 403-as státusszal elutasításra kerül.",
+            "Szervező más szervező eseményének törlése FORBIDDEN hibakóddal 403-as státusszal elutasításra kerül.",
+            "A szervező a saját eseményén ugyanezeket a műveleteket sikeresen végrehajtja.",
+            "Admin bármely szervező eseményét szerkesztheti, publikálhatja és törölheti.",
+            "Az ellenőrzés szerveroldali: a védett végpont közvetlen, felület nélküli hívása is FORBIDDEN 403-at ad."
+          ],
+          "dod": [
+            "A jogosultsági ellenőrzés központi, újrahasznosított komponensben valósul meg minden érintett végponton.",
+            "Az OpenAPI leírás a FORBIDDEN hibakódot a megfelelő végpontoknál dokumentálja.",
+            "Létezik teszt a szervezők közötti elkülönítésre és az admin kivételre.",
+            "Létezik teszt a közvetlen, felület nélküli hívásra."
+          ]
+        },
+        {
+          "code": "E9-S14",
+          "title": "Visszatérítések listája",
+          "points": 3,
+          "priority": "medium",
+          "requirements": [
+            "FR-814"
+          ],
+          "depends_on": [
+            "E10-S2"
+          ],
+          "description": "Az admin a visszatérítések listáját állapot, esemény és dátum szerint szűrve tekintheti meg. A lista a Refund rekordokat adja vissza a hozzájuk tartozó foglalás és esemény azonosítójával, összegével és státuszával. A visszatérítések listája adminisztrátori jogosultságot igényel.",
+          "acceptance": [
+            "Admin a Refund rekordokat status, eventId és dátumtartomány szerint szűrve listázhatja.",
+            "A 7. eseményhez tartozó visszatérítés a listában 11 250 Ft összeggel és SIKERES státusszal jelenik meg.",
+            "Szűrés a FUGGO, SIKERES és SIKERTELEN status értékekre működik.",
+            "Szervező és vásárló hívására a végpont FORBIDDEN hibakódot ad 403-as státusszal (BR-20).",
+            "Nincs találat esetén a válasz üres lista, nem hiba."
+          ],
+          "dod": [
+            "A lista a 02. domain szótár szerinti Refund entitást adja vissza.",
+            "Az OpenAPI leírás dokumentálja a szűrőparamétereket és a FORBIDDEN hibakódot.",
+            "Létezik teszt a 7. esemény visszatérítésének megjelenésére.",
+            "Létezik teszt az adminon kívüli szerepkörök elutasítására."
+          ]
+        }
+      ]
+    },
+    {
+      "code": "E10",
+      "title": "Esemény lemondása és visszatérítés",
+      "goal": "A PUBLIKALT vagy ERTEKESITES_SZUNETELT esemény adminisztrátori lemondása és a vásárlók automatikus, teljes összegű kártalanítása. Az epic lefedi a fizetett foglalások visszatérítését, a függő foglalások lezárását, a jegyek visszavonását, az értesítéseket és a pénzügyi napló vezetését. A folyamat a seed 7. eseményére épülő konkrét állapotokkal tesztelhető.",
+      "stories": [
+        {
+          "code": "E10-S1",
+          "title": "Esemény lemondása adminisztrátor által",
+          "points": 5,
+          "priority": "urgent",
+          "requirements": [
+            "FR-901"
+          ],
+          "depends_on": [
+            "E9-S3"
+          ],
+          "description": "Az admin a PUBLIKALT vagy ERTEKESITES_SZUNETELT állapotú eseményt lemondhatja, amitől annak status értéke LEMONDVA lesz. A lemondás megindítja a visszatérítési, jegyvisszavonási, foglaláslezárási, értesítési és naplózási folyamatot. A művelet kizárólag adminisztrátori jogosultsággal hajtható végre.",
+          "acceptance": [
+            "Admin a PUBLIKALT vagy ERTEKESITES_SZUNETELT eseményt lemondhatja, amitől annak status értéke LEMONDVA lesz.",
+            "PISZKOZAT, LEZAJLT vagy már LEMONDVA állapotú esemény lemondása EVENT_INVALID_STATE hibakóddal 409-es státusszal elutasításra kerül.",
+            "A már LEMONDVA állapotú 7. esemény újbóli lemondása elutasításra kerül.",
+            "Szervező vagy vásárló lemondási kísérlete FORBIDDEN hibakódot ad 403-as státusszal.",
+            "Sikeres lemondás után az esemény a nyilvános katalógusban nem jelenik meg (BR-06)."
+          ],
+          "dod": [
+            "A lemondás állapotátmenete és a belőle induló folyamatok egyetlen tranzakcióban indulnak (NFR-15).",
+            "Az OpenAPI leírás tartalmazza az EVENT_INVALID_STATE és FORBIDDEN hibakódokat.",
+            "Létezik teszt a sikeres lemondásra és a tiltott állapotok elutasítására.",
+            "Létezik teszt a szervezői és vásárlói elutasításra."
+          ]
+        },
+        {
+          "code": "E10-S2",
+          "title": "Fizetett foglalások automatikus visszatérítése",
+          "points": 8,
+          "priority": "urgent",
+          "requirements": [
+            "FR-902",
+            "BR-10"
+          ],
+          "depends_on": [
+            "E10-S1",
+            "E7-S4"
+          ],
+          "description": "Esemény lemondásakor minden FIZETVE foglalásra teljes összegű Refund készül automatikusan, ESEMENY_LEMONDVA indoklással (BR-10). A visszatérített összeg a foglalás total értéke, a foglalás állapota VISSZATERITVE lesz. Egy foglalásra legfeljebb egy sikeres visszatérítés jöhet létre.",
+          "acceptance": [
+            "Esemény lemondásakor minden FIZETVE foglalásra Refund készül, amelynek amount értéke a foglalás total értéke, reason értéke ESEMENY_LEMONDVA (BR-10).",
+            "A 7. esemény 8. foglalására a visszatérítés 11 250 Ft összeggel, SIKERES státusszal jön létre.",
+            "A visszatérített foglalás status értéke FIZETVE → VISSZATERITVE.",
+            "Egy foglalásra legfeljebb egy sikeres visszatérítés jöhet létre; ismételt feldolgozás esetén REFUND_ALREADY_ISSUED hibakód 409-es státusszal (BR-10).",
+            "Nem FIZETVE állapotú (pl. ZAROLT vagy LEJART) foglalásra nem készül visszatérítés.",
+            "A visszatérítés completedAt mezője a feldolgozás időpontjával töltődik ki."
+          ],
+          "dod": [
+            "A teljes visszatérítési folyamat egyetlen tranzakcióban, az összes FIZETVE foglalásra lefut (NFR-15).",
+            "Az OpenAPI leírás dokumentálja a REFUND_ALREADY_ISSUED és REFUND_NOT_ALLOWED hibakódokat.",
+            "Létezik teszt a 8. foglalás 11 250 Ft-os visszatérítésére.",
+            "Létezik teszt a nem FIZETVE foglalás kihagyására."
+          ]
+        },
+        {
+          "code": "E10-S3",
+          "title": "Függő foglalások lezárása és helyek felszabadítása",
+          "points": 5,
+          "priority": "urgent",
+          "requirements": [
+            "FR-903"
+          ],
+          "depends_on": [
+            "E10-S1",
+            "E6-S3"
+          ],
+          "description": "Esemény lemondásakor a ZAROLT és FIZETESRE_VAR állapotú függő foglalások lezárásra kerülnek, és a hozzájuk tartozó helyek felszabadulnak. Az érintett SeatState rekordok SZABAD állapotba kerülnek, a holdExpiresAt törlődik, az állóhelyes zárolt darabszám felszabadul. A FIZETVE foglalásokat nem ez a lépés, hanem a visszatérítés zárja le.",
+          "acceptance": [
+            "Az esemény ZAROLT és FIZETESRE_VAR állapotú foglalásai lezárásra kerülnek, és nem maradnak aktív zár alatt.",
+            "Az érintett SeatState rekordok state értéke SZABAD lesz, holdExpiresAt értéke törlődik.",
+            "Állóhelyes függő foglalás lezárásakor a zárolt darabszám felszabadul, a kapacitás újra elérhető.",
+            "A seed 5. foglalása (ZAROLT, 15 250 Ft) a 2. esemény lemondásakor lezárásra kerül.",
+            "A FIZETVE foglalásokat ez a lépés nem módosítja; azokat a visszatérítés kezeli."
+          ],
+          "dod": [
+            "A foglaláslezárás és a helyfelszabadítás egy tranzakcióban történik (NFR-15).",
+            "Az OpenAPI leírás dokumentálja a lemondás hatására lezajló állapotváltozásokat.",
+            "Létezik teszt a ZAROLT és FIZETESRE_VAR foglalás lezárására.",
+            "Létezik teszt az ülőhelyes és állóhelyes helyfelszabadításra."
+          ]
+        },
+        {
+          "code": "E10-S4",
+          "title": "Jegyek visszavonása és QR érvénytelenítése",
+          "points": 3,
+          "priority": "urgent",
+          "requirements": [
+            "FR-904",
+            "BR-18"
+          ],
+          "depends_on": [
+            "E10-S1",
+            "E8-S4"
+          ],
+          "description": "Esemény lemondásakor az esemény minden kiállított jegye ERVENYES állapotból VISSZAVONT állapotba kerül, és a QR-kódja érvénytelenné válik (BR-18). A visszavont jegy revokedAt mezője kitöltődik, a nyilvános QR-ellenőrzés pedig érvénytelen eredményt ad. Az eseményhez nem tartozó jegyek változatlanok maradnak.",
+          "acceptance": [
+            "Az esemény minden Ticket rekordja ERVENYES → VISSZAVONT állapotba kerül (BR-18).",
+            "A visszavont jegyek revokedAt mezője kitöltődik.",
+            "A nyilvános QR-ellenőrzés visszavont jegykódra TICKET_REVOKED hibakódot ad 409-es státusszal.",
+            "A már VISSZAVONT jegyet a folyamat nem módosítja tovább, ismételt futtatás nem okoz hibát.",
+            "Egy másik esemény jegyei ERVENYES állapotban maradnak."
+          ],
+          "dod": [
+            "A jegyvisszavonás az esemény összes jegyére egy tranzakcióban lefut (NFR-15).",
+            "Az OpenAPI leírás dokumentálja a TICKET_REVOKED hibakódot a QR-ellenőrzésnél.",
+            "Létezik teszt a jegyek visszavonására és a QR-ellenőrzés érvénytelenségére.",
+            "Létezik teszt a nem érintett esemény jegyeinek változatlanságára."
+          ]
+        },
+        {
+          "code": "E10-S5",
+          "title": "Értesítés a lemondásról és a visszatérítésről",
+          "points": 3,
+          "priority": "high",
+          "requirements": [
+            "FR-905"
+          ],
+          "depends_on": [
+            "E10-S2",
+            "E8-S7"
+          ],
+          "description": "Esemény lemondásakor minden érintett vásárló e-mailt kap a lemondásról, a sikeres visszatérítésről pedig külön értesítés készül. Az értesítések EmailNotification rekordként jönnek létre a megfelelő sablonnal, és a MailHog-ra kerülnek. Az e-mail a címzett locale beállítása szerinti nyelven készül.",
+          "acceptance": [
+            "Minden érintett vásárló e-mailt kap a lemondásról ESEMENY_LEMONDVA sablonnal.",
+            "A sikeres visszatérítésről VISSZATERITES_TELJESITVE sablonnal megy értesítés a foglalás tulajdonosának.",
+            "Az értesítés EmailNotification rekordként jön létre ELKULDVE státusszal, és megjelenik a MailHog-on.",
+            "Az értesítés a címzett User.locale beállítása szerinti nyelven készül (FR-1004).",
+            "Az eseményhez nem kapcsolódó felhasználó nem kap értesítést.",
+            "Sikertelen kézbesítés esetén az EmailNotification status HIBA értékű, errorMessage kitöltve."
+          ],
+          "dod": [
+            "Az értesítések a visszatérítés sikeres lezárása után, konzisztensen jönnek létre (NFR-15).",
+            "Az OpenAPI leírás dokumentálja az értesítési sablonokat.",
+            "Létezik teszt az ESEMENY_LEMONDVA és VISSZATERITES_TELJESITVE értesítésre.",
+            "Létezik teszt a címzett nyelvének érvényesülésére."
+          ]
+        },
+        {
+          "code": "E10-S6",
+          "title": "Pénzügyi napló vezetése",
+          "points": 5,
+          "priority": "high",
+          "requirements": [
+            "FR-906"
+          ],
+          "depends_on": [
+            "E10-S2"
+          ],
+          "description": "A lemondás során a rendszer a LedgerEntry naplóba VISSZATERITES bejegyzéseket készít minden visszatérített foglalásra. A korábbi BEVETEL bejegyzések megmaradnak, a napló append-only. Az esemény egyenlege a BEVETEL és VISSZATERITES bejegyzések különbségeként követhető.",
+          "acceptance": [
+            "A lemondás előtti BEVETEL LedgerEntry bejegyzések változatlanok maradnak, a napló append-only.",
+            "Minden visszatérített foglalásra VISSZATERITES LedgerEntry készül, amelynek amount értéke a foglalás total értéke.",
+            "A 7. esemény egyenlege a napló alapján 11 250 (BEVETEL) − 11 250 (VISSZATERITES) = 0 Ft.",
+            "Egy esemény bevétele a Σ BEVETEL − Σ VISSZATERITES képlettel számolható (a 02. dokumentum 5. pontja szerint).",
+            "A LedgerEntry rekord nem módosítható, kizárólag új bejegyzés hozható létre."
+          ],
+          "dod": [
+            "A naplóbejegyzések a visszatérítéssel egy tranzakcióban jönnek létre (NFR-15).",
+            "Az OpenAPI leírás dokumentálja a naplóbejegyzés típusait.",
+            "Létezik teszt a 7. esemény 0 Ft-os egyenlegére.",
+            "Létezik teszt a napló append-only jellegére."
+          ]
+        },
+        {
+          "code": "E10-S7",
+          "title": "Ismételt lemondás és visszatérítés tiltása",
+          "points": 3,
+          "priority": "medium",
+          "requirements": [
+            "FR-907",
+            "REFUND_ALREADY_ISSUED"
+          ],
+          "depends_on": [
+            "E10-S2"
+          ],
+          "description": "A rendszer megakadályozza ugyanazon esemény ismételt lemondását és ugyanarra a foglalásra a második visszatérítést. A védelem tranzakcióban, egyidejű kérések esetén is érvényesül. A tiltott próbálkozás nem hoz létre új Refund vagy LedgerEntry rekordot.",
+          "acceptance": [
+            "Már LEMONDVA állapotú esemény újbóli lemondása EVENT_INVALID_STATE hibakóddal 409-es státusszal elutasításra kerül.",
+            "Már visszatérített foglalásra indított ismételt visszatérítés REFUND_ALREADY_ISSUED hibakóddal 409-es státusszal elutasításra kerül.",
+            "Nem visszatérítésre jogosult (nem FIZETVE) foglalás visszatérítése REFUND_NOT_ALLOWED hibakóddal 409-es státusszal elutasításra kerül.",
+            "A tiltott próbálkozás nem hoz létre új Refund és új VISSZATERITES LedgerEntry rekordot.",
+            "A védelem egyidejű kérések esetén is érvényesül, egy foglalásra legfeljebb egy visszatérítés jön létre (NFR-02)."
+          ],
+          "dod": [
+            "A tiltás adatbázis-szintű egyediségi feltétellel és tranzakciós zárolással érvényesül.",
+            "Az OpenAPI leírás dokumentálja az EVENT_INVALID_STATE, REFUND_ALREADY_ISSUED és REFUND_NOT_ALLOWED hibakódokat.",
+            "Létezik teszt az ismételt lemondásra és a duplikált visszatérítésre.",
+            "Létezik párhuzamos futtatást vizsgáló teszt a versenyhelyzet kizárására."
+          ]
+        }
+      ]
+    },
+    {
+      "code": "E11",
+      "title": "Nyelv és megjelenítés",
+      "goal": "A felület és az API kimenet magyar és angol nyelven is teljes legyen. Az epic a felületi nyelvváltást, az Accept-Language szerinti API hibanyelvet, a dátum- és pénzformázást, valamint az e-mail sablonok nyelvfüggését fedi le. A cél, hogy egyetlen szöveg se származzon beégetett értékből, és ne maradjon hiányzó fordítás.",
+      "stories": [
+        {
+          "code": "E11-S1",
+          "title": "Nyelvváltó a felületen",
+          "points": 3,
+          "priority": "high",
+          "requirements": [
+            "FR-1001",
+            "BR-14"
+          ],
+          "depends_on": [
+            "E1-S5"
+          ],
+          "description": "A felületen magyar és angol nyelv választható, az alapértelmezett nyelv a magyar (BR-14). A bejelentkezett felhasználó választása a User.locale mezőben tárolódik, és a következő bejelentkezéskor is érvényes. Nyelvváltáskor a felület minden szövege a választott nyelv erőforrásaiból származik.",
+          "acceptance": [
+            "A felületen magyar és angol nyelv választható, az alapértelmezett nyelv magyar (BR-14).",
+            "Bejelentkezett felhasználó nyelvi választása a User.locale mezőbe mentődik, és a következő bejelentkezéskor is érvényesül.",
+            "Nyelvváltás után a felület minden szövege a választott nyelven jelenik meg, beégetett magyar szöveg nélkül (NFR-09).",
+            "Hiányzó fordításkulcs esetén a felület nem jelenít meg nyers kulcsot, a hiányzó fordítás hibaként kerül naplózásra.",
+            "Bejelentkezés nélkül a nyelvi választás a munkamenetre érvényes."
+          ],
+          "dod": [
+            "Minden felületi szöveg nyelvi erőforrásból származik, a komponensekben nincs beégetett szöveg (NFR-09).",
+            "A magyar és angol erőforrás ugyanazt a kulcskészletet tartalmazza, hiányzó fordítás nélkül.",
+            "A User.locale mező a 02. domain szótár szerinti hu és en értéket veszi fel.",
+            "Létezik teszt a nyelvválasztás megőrzésére bejelentkezés után."
+          ]
+        },
+        {
+          "code": "E11-S2",
+          "title": "API hibaüzenetek nyelvfüggése",
+          "points": 3,
+          "priority": "high",
+          "requirements": [
+            "FR-1002"
+          ],
+          "depends_on": [
+            "E1-S3"
+          ],
+          "description": "Az API minden hibaüzenete az Accept-Language fejléc szerint magyar vagy angol nyelven érkezik, míg a hibakód mindig azonos és nyelvfüggetlen (BR-14). A hibaválasz a 04. dokumentum 2.1 pontja szerinti szerkezetet követi. A nyelvválasztás nem befolyásolja a HTTP státuszt és a hibakódot.",
+          "acceptance": [
+            "Az API hibaüzenete az Accept-Language fejléc szerint magyar (message) vagy angol (messageEn) nyelven érkezik (BR-14).",
+            "Ugyanaz a hiba hu és en fejléc mellett azonos code értékkel, de eltérő szöveggel tér vissza.",
+            "A hibaválasz a 04. dokumentum 2.1 pontja szerinti szerkezetű: error.code, error.message, error.messageEn, opcionális error.details.",
+            "Hiányzó vagy ismeretlen Accept-Language esetén a válasz magyar üzenetet tartalmaz.",
+            "Az Accept-Language nem befolyásolja a HTTP státuszt és a hibakódot; ismeretlen erőforrás minden nyelven NOT_FOUND 404."
+          ],
+          "dod": [
+            "Minden hibaválasz központi hibakezelőn keresztül, egységes szerkezettel készül (NFR-07).",
+            "Az OpenAPI leírás dokumentálja az Accept-Language fejlécet és a hibaválasz sémáját.",
+            "Létezik teszt ugyanarra a hibára hu és en fejléccel.",
+            "A hibaválasz nem tartalmaz stack trace-t és belső elérési utat."
+          ]
+        },
+        {
+          "code": "E11-S3",
+          "title": "Dátum és pénzösszeg formázása nyelvenként",
+          "points": 3,
+          "priority": "high",
+          "requirements": [
+            "FR-1003",
+            "BR-15"
+          ],
+          "depends_on": [
+            "E1-S5"
+          ],
+          "description": "A dátum és a pénzösszeg a felület nyelvének megfelelően formázódik. Magyarul a dátum 2026. november 14. 19:00, az összeg 12 500 Ft formában jelenik meg (BR-15). Az időzóna minden esetben Európa/Budapest, a pénzösszeg HUF egész szám.",
+          "acceptance": [
+            "Magyar nyelven a dátum 2026. november 14. 19:00, a pénzösszeg 12 500 Ft formában jelenik meg (BR-15).",
+            "Angol nyelven a dátum November 14, 2026 7:00 PM, a pénzösszeg 12,500 HUF formában jelenik meg.",
+            "A pénzösszeg ezer-elválasztóval, HUF egész számként jelenik meg, a serviceFee és total értékekre is (pl. 25 500 Ft).",
+            "A formázás minden esetben az Európa/Budapest időzónát alkalmazza, függetlenül a szerver lokáljától.",
+            "Nem egész számú pénzösszeg (pl. 12 500,5 Ft) nem jelenhet meg; a rendszer kizárólag egész HUF értéket formáz (BR-15)."
+          ],
+          "dod": [
+            "A dátum- és pénzformázás közös, újrahasznosított segédfüggvényben valósul meg minden felületen.",
+            "A BR-15 szerinti ezer-elválasztó minden összegnél érvényesül.",
+            "Létezik teszt a magyar és angol formázási példákra.",
+            "Létezik teszt az időzóna helyes kezelésére."
+          ]
+        },
+        {
+          "code": "E11-S4",
+          "title": "E-mail sablonok nyelvfüggése",
+          "points": 2,
+          "priority": "medium",
+          "requirements": [
+            "FR-1004"
+          ],
+          "depends_on": [
+            "E8-S7",
+            "E1-S5"
+          ],
+          "description": "Az értesítő e-mailek a címzett nyelvi beállítása (User.locale) szerint készülnek. A magyar nyelvű felhasználó magyar, az angol nyelvű angol sablont kap. Az e-mail nyelve nem a kérés fejlécétől, hanem a címzett beállításától függ. Hiányzó fordítás esetén a levél nem megy ki nyers kulccsal.",
+          "acceptance": [
+            "Az értesítő e-mail a címzett User.locale beállítása szerinti nyelven készül (FR-1004).",
+            "A 6. felhasználó (locale = en) angol nyelvű, az 1–5. felhasználó (locale = hu) magyar nyelvű e-mailt kap.",
+            "Ugyanaz az esemény (pl. JEGY_KIIALLITVA) a különböző nyelvi beállítású címzetteknek eltérő nyelvű szöveggel megy ki.",
+            "Hiányzó fordítás esetén a rendszer nem küld nyers kulcsot tartalmazó levelet; az EmailNotification status HIBA értékű, errorMessage kitöltve.",
+            "Az e-mail nyelvét nem a kérés Accept-Language fejléce, hanem a címzett locale-ja határozza meg."
+          ],
+          "dod": [
+            "Minden e-mail sablon hu és en változatban létezik, azonos kulcskészlettel.",
+            "Az értesítés nyelvét a címzett User.locale mezője határozza meg.",
+            "Létezik teszt az angol és magyar címzett eltérő nyelvű levelére.",
+            "Létezik teszt a hiányzó fordítás HIBA-státuszú kezelésére."
+          ]
+        }
+      ]
+    }
+  ]
+}
