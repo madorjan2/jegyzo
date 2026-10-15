@@ -4,6 +4,10 @@
 > Story-kból megvalósítja. Ez a dokumentum a kötelező kereteket rögzíti; a
 > részletes követelmények a `docs/01-specifikacio/` alatt, a munkadarabok az
 > It's a Plan `JGY` projektben találhatók.
+>
+> **Előbb a [../../AGENTS.md](../../AGENTS.md)-t olvasd el** — az az agentek
+> belépési pontja (szerződés, munkamódszer, tiltott hatókör, dokumentumtérkép).
+> Ez a fájl annak a részletes kifejtése.
 
 ---
 

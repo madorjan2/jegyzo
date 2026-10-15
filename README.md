@@ -28,7 +28,8 @@ A projekt két részből áll:
 | Termékspecifikáció | ✅ kész (`docs/01-specifikacio/`) |
 | Architektúra + Docker szerződés | ✅ kész (`docs/02-architektura/`) |
 | Demo adatkészlet specifikáció | ✅ kész (`docs/03-adatok/`) |
-| Agent instrukciók | ✅ kész (`docs/04-ai-agent/`) |
+| **Agent projekt biblia** | ✅ kész (`AGENTS.md`) — ez az agentek belépési pontja |
+| Részletes agent instrukciók | ✅ kész (`docs/04-ai-agent/`) |
 | Epic / User Story backlog | ✅ vázlat a repóban, forrás: It's a Plan `JGY` |
 | Alkalmazás kód | ❌ nincs (a coding agent készíti a story-kból) |
 
@@ -62,6 +63,8 @@ A pontos indítási/törlési/újratöltési lépések: [docs/02-architektura/02
 ## Dokumentumtérkép
 
 ```
+AGENTS.md                            # agent belépési pont (projekt biblia)
+CLAUDE.md / .github/copilot-instructions.md   # ugyanarra mutató jelzőfájlok
 docs/
 ├── 01-specifikacio/                 # mit kell tudnia a rendszernek (termékszint)
 │   ├── 01-latasmod-es-hatokor.md
@@ -90,6 +93,8 @@ docs/
   hivatkoznak, így a specifikáció és a backlog összeköthető.
 - **Munkakövetés:** It's a Plan, `JGY` projekt. A repó Markdown az elsődleges
   forrás a specifikációhoz; a tracker a work item-ekhez.
+- **Agentek belépési pontja:** `AGENTS.md`. Az agentek nem kérdeznek
+  eligazítást: a szerződés, a munkamódszer és a dokumentumtérkép ott van.
 
 ## Verziókezelés
 
