@@ -20,11 +20,11 @@ cp .env.example .env       # Linux / macOS
 ## 2. Indítás
 
 ```bash
-docker compose up -d          # minden szolgáltatás (az alkalmazás kódja után)
+docker compose up -d          # minden szolgáltatás (api, web, postgres, mailhog, kiwi)
 docker compose ps             # állapot és healthcheck
 ```
 
-Amíg az alkalmazás kódja nem készült el, csak az infrastruktúra indítható:
+Ha csak az infrastruktúrát (adatbázis, MailHog, Kiwi) akarod indítani:
 
 ```bash
 docker compose up -d postgres mailhog kiwi-db kiwi-init kiwi
@@ -85,7 +85,7 @@ docker compose logs kiwi-init       # Kiwi inicializálás kimenetele
 
 | Tünet | Ok / megoldás |
 | --- | --- |
-| `api` nem indul: „no such file or directory: ./backend” | Az alkalmazás kódja még nem készült el – csak az infrastruktúra indítható (2. pont). |
+| `api` nem indul | Nézd meg a naplót: `docker compose logs api`. Ha a `./backend` könyvtár nem található, az alkalmazás kódja nincs a helyén. |
 | `api` healthcheck „unhealthy” | Az API induláskor migrációt és seedet futtat; 90 s után érdemes a naplót nézni. |
 | Port ütközés (`bind: address already in use`) | Állítsd át a portot a `.env`-ben (`WEB_PORT`, `API_PORT`, `POSTGRES_PORT`, `MAILHOG_UI_PORT`, `KIWI_PORT`, `KIWI_HTTPS_PORT`), és indítsd újra. |
 | Kiwi TCMS „502 / nem tölt be” | A `kiwi-init` még fut, vagy hibával leállt: `docker compose logs kiwi-init`. |

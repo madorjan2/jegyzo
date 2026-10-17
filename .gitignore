@@ -6,6 +6,7 @@
 # Local temp / scratch
 *.tmp
 .tmp/
+.local/
 
 # Node
 node_modules/

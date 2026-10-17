@@ -1,0 +1,358 @@
+// Jegyzo — Prisma schema
+// Conventions follow docs/01-specifikacio/02-domain-szotar-es-adatmodell.md
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  VASARLO
+  SZERVEZO
+  ADMIN
+}
+
+enum Locale {
+  hu
+  en
+}
+
+enum SectionKind {
+  ULOHELYES
+  ALLOHELYES
+}
+
+enum EventStatus {
+  PISZKOZAT
+  PUBLIKALT
+  ERTEKESITES_SZUNETELT
+  LEZAJLT
+  LEMONDVA
+}
+
+enum SeatStateEnum {
+  SZABAD
+  ZAROLT
+  ELADOTT
+}
+
+enum BookingStatus {
+  ZAROLT
+  FIZETESRE_VAR
+  FIZETVE
+  LEMONDVA
+  LEJART
+  VISSZATERITVE
+}
+
+enum PayStatus {
+  SIKERES
+  ELUTASITOTT
+  IDOTULLEPES
+  FELDOLGOZASI_HIBA
+}
+
+enum CardBrand {
+  VISA
+  MASTERCARD
+  AMEX
+  EGYEB
+}
+
+enum TicketStatus {
+  ERVENYES
+  VISSZAVONT
+}
+
+enum RefundStatus {
+  FUGGO
+  SIKERES
+  SIKERTELEN
+}
+
+enum RefundReason {
+  ESEMENY_LEMONDVA
+}
+
+enum LedgerType {
+  BEVETEL
+  VISSZATERITES
+}
+
+enum EmailTemplate {
+  JEGY_KIIALLITVA
+  VISSZATERITES_TELJESITVE
+  ESEMENY_LEMONDVA
+}
+
+enum EmailStatus {
+  ELKULDVE
+  HIBA
+}
+
+model User {
+  id           Int      @id @default(autoincrement())
+  email        String   @unique
+  passwordHash String
+  fullName     String
+  phone        String?
+  role         UserRole @default(VASARLO)
+  locale       Locale   @default(hu)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  bookings   Booking[]
+  events     Event[]             @relation("Organizer")
+  refunds    Refund[]
+  emailNotes EmailNotification[]
+}
+
+model Venue {
+  id            Int      @id @default(autoincrement())
+  name          String
+  city          String
+  address       String
+  description   String?
+  isActive      Boolean  @default(true)
+  totalCapacity Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  sections Section[]
+  events   Event[]
+}
+
+model Section {
+  id          Int          @id @default(autoincrement())
+  venueId     Int
+  name        String
+  kind        SectionKind
+  capacity    Int?
+  position    Int
+  venue       Venue        @relation(fields: [venueId], references: [id])
+  rows        Row[]
+  ticketTypes TicketType[]
+
+  @@index([venueId])
+}
+
+model Row {
+  id        Int     @id @default(autoincrement())
+  sectionId Int
+  label     String
+  position  Int
+  section   Section @relation(fields: [sectionId], references: [id])
+  seats     Seat[]
+
+  @@index([sectionId])
+}
+
+model Seat {
+  id           Int           @id @default(autoincrement())
+  rowId        Int
+  number       Int
+  label        String
+  row          Row           @relation(fields: [rowId], references: [id])
+  seatStates   SeatState[]
+  bookingItems BookingItem[]
+  tickets      Ticket[]
+
+  @@unique([rowId, number])
+  @@index([rowId])
+}
+
+model Event {
+  id              Int         @id @default(autoincrement())
+  name            String
+  category        String
+  venueId         Int
+  organizerUserId Int
+  startsAt        DateTime
+  durationMinutes Int
+  endsAt          DateTime
+  doorsOpenAt     DateTime?
+  description     String
+  posterUrl       String?
+  status          EventStatus @default(PISZKOZAT)
+  salesStartAt    DateTime
+  salesEndAt      DateTime
+  publishedAt     DateTime?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  venue         Venue         @relation(fields: [venueId], references: [id])
+  organizer     User          @relation("Organizer", fields: [organizerUserId], references: [id])
+  ticketTypes   TicketType[]
+  seatStates    SeatState[]
+  bookings      Booking[]
+  ledgerEntries LedgerEntry[]
+}
+
+model TicketType {
+  id           Int       @id @default(autoincrement())
+  eventId      Int
+  sectionId    Int
+  name         String
+  price        Int
+  capacity     Int?
+  maxPerUser   Int       @default(8)
+  salesStartAt DateTime?
+  salesEndAt   DateTime?
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  event        Event         @relation(fields: [eventId], references: [id])
+  section      Section       @relation(fields: [sectionId], references: [id])
+  bookingItems BookingItem[]
+  tickets      Ticket[]
+
+  @@unique([eventId, sectionId])
+  @@index([eventId])
+}
+
+model SeatState {
+  eventId       Int
+  seatId        Int
+  state         SeatStateEnum @default(SZABAD)
+  bookingId     Int?
+  holdExpiresAt DateTime?
+  event         Event         @relation(fields: [eventId], references: [id])
+  seat          Seat          @relation(fields: [seatId], references: [id])
+  booking       Booking?      @relation(fields: [bookingId], references: [id])
+
+  @@id([eventId, seatId])
+  @@index([eventId])
+  @@index([bookingId])
+}
+
+model Booking {
+  id            Int           @id @default(autoincrement())
+  code          String        @unique
+  userId        Int
+  eventId       Int
+  status        BookingStatus @default(ZAROLT)
+  subtotal      Int
+  serviceFee    Int
+  total         Int
+  currency      String        @default("HUF")
+  holdExpiresAt DateTime
+  createdAt     DateTime      @default(now())
+  paidAt        DateTime?
+  canceledAt    DateTime?
+
+  user       User                 @relation(fields: [userId], references: [id])
+  event      Event                @relation(fields: [eventId], references: [id])
+  items      BookingItem[]
+  seatStates SeatState[]
+  payments   PaymentTransaction[]
+  tickets    Ticket[]
+  refund     Refund?
+  ledgers    LedgerEntry[]
+
+  @@index([userId])
+  @@index([eventId])
+  @@index([status])
+}
+
+model BookingItem {
+  id           Int  @id @default(autoincrement())
+  bookingId    Int
+  ticketTypeId Int
+  seatId       Int?
+  quantity     Int
+  unitPrice    Int
+  lineTotal    Int
+
+  booking    Booking    @relation(fields: [bookingId], references: [id])
+  ticketType TicketType @relation(fields: [ticketTypeId], references: [id])
+  seat       Seat?      @relation(fields: [seatId], references: [id])
+
+  @@index([bookingId])
+  @@index([ticketTypeId])
+}
+
+model PaymentTransaction {
+  id             Int       @id @default(autoincrement())
+  bookingId      Int
+  amount         Int
+  status         PayStatus
+  cardLast4      String
+  cardBrand      CardBrand
+  pspReference   String    @unique
+  errorCode      String?
+  attemptNumber  Int
+  idempotencyKey String
+  createdAt      DateTime  @default(now())
+
+  booking Booking @relation(fields: [bookingId], references: [id])
+
+  @@index([bookingId])
+}
+
+model Ticket {
+  id           Int          @id @default(autoincrement())
+  bookingId    Int
+  ticketTypeId Int
+  seatId       Int?
+  code         String       @unique
+  qrPayload    String
+  status       TicketStatus @default(ERVENYES)
+  issuedAt     DateTime     @default(now())
+  revokedAt    DateTime?
+
+  booking    Booking    @relation(fields: [bookingId], references: [id])
+  ticketType TicketType @relation(fields: [ticketTypeId], references: [id])
+  seat       Seat?      @relation(fields: [seatId], references: [id])
+
+  @@index([bookingId])
+}
+
+model Refund {
+  id                Int          @id @default(autoincrement())
+  bookingId         Int          @unique
+  amount            Int
+  reason            RefundReason
+  status            RefundStatus
+  initiatedByUserId Int
+  createdAt         DateTime     @default(now())
+  completedAt       DateTime?
+
+  booking     Booking @relation(fields: [bookingId], references: [id])
+  initiatedBy User    @relation(fields: [initiatedByUserId], references: [id])
+}
+
+model LedgerEntry {
+  id          Int        @id @default(autoincrement())
+  type        LedgerType
+  bookingId   Int
+  eventId     Int
+  amount      Int
+  description String?
+  createdAt   DateTime   @default(now())
+
+  booking Booking @relation(fields: [bookingId], references: [id])
+  event   Event   @relation(fields: [eventId], references: [id])
+
+  @@index([bookingId])
+  @@index([eventId])
+}
+
+model EmailNotification {
+  id           Int           @id @default(autoincrement())
+  toEmail      String
+  template     EmailTemplate
+  locale       Locale
+  status       EmailStatus
+  sentAt       DateTime?
+  errorMessage String?
+  userId       Int
+  user         User          @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+}

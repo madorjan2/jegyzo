@@ -8,16 +8,16 @@ tesztelést**.
 
 A projekt két részből áll:
 
-1. **Dokumentáció (ez a repó jelenlegi állapota)** – teljes termékspecifikáció,
-   architektúra- és docker-szerződés, demo adatkészlet, valamint a fejlesztői
-   backlog (Epic-ek és User Story-k) az It's a Plan trackerben (`JGY` projekt).
-2. **Alkalmazás** – a NestJS + React + PostgreSQL rendszer, amelyet később egy
-   AI coding agent implementál **kizárólag a User Story-k alapján**. A sandbox
-   egyik lényeges jellemzője, hogy az így keletkező szoftver **szándékosan nem
-   hibamentes**: a QA feladata éppen ezek felderítése.
+1. **Dokumentáció** – teljes termékspecifikáció, architektúra- és
+   docker-szerződés, demo adatkészlet, valamint a fejlesztői backlog (Epic-ek és
+   User Story-k) az It's a Plan trackerben (`JGY` projekt).
+2. **Alkalmazás** – a NestJS + React + PostgreSQL rendszer (`backend/`,
+   `frontend/`), amelyet egy AI coding agent implementált **kizárólag a User
+   Story-k alapján**. A sandbox egyik lényeges jellemzője, hogy az így keletkező
+   szoftver **szándékosan nem hibamentes**: a QA feladata éppen ezek felderítése.
 
-> Az alkalmazás kódja **még nem létezik**. Ez a repó a szerződés, amit az
-> implementáló agentnek teljesítenie kell.
+> Az alkalmazás a `backend/` és `frontend/` könyvtárban van; a teljes stack a
+> `docker compose up -d` paranccsal indul (lásd lentebb).
 
 ---
 
@@ -31,7 +31,7 @@ A projekt két részből áll:
 | **Agent projekt biblia** | ✅ kész (`AGENTS.md`) — ez az agentek belépési pontja |
 | Részletes agent instrukciók | ✅ kész (`docs/04-ai-agent/`) |
 | Epic / User Story backlog | ✅ vázlat a repóban, forrás: It's a Plan `JGY` |
-| Alkalmazás kód | ❌ nincs (a coding agent készíti a story-kból) |
+| Alkalmazás kód | ✅ megvalósítva (`backend/`, `frontend/`) — a story-k alapján |
 
 ## Gyors indítás (QA kollégáknak)
 
@@ -60,6 +60,30 @@ docker compose ps
 
 A pontos indítási/törlési/újratöltési lépések: [docs/02-architektura/02-docker-es-futtatas.md](docs/02-architektura/02-docker-es-futtatas.md).
 
+## It's a Plan tracker (a `JGY` backlog)
+
+A fejlesztői backlog egy **It's a Plan** példányban él. A tracker stack és a `JGY`
+projekt teljes adatkészlete a repóban van (`tracker/`), így egy friss klón
+ugyanazokat a work item-eket kapja — külön compose fájl, a Jegyzo stacktől
+függetlenül:
+
+```bash
+cp tracker/.env.example tracker/.env      # töltsd ki a kötelező értékeket
+docker compose -f tracker/docker-compose.yml up -d
+```
+
+| Szolgáltatás | Cím |
+| --- | --- |
+| Tracker webes felület | http://localhost:3001 |
+| Tracker REST API | http://localhost:3000 (OpenAPI: http://localhost:3000/docs) |
+| MCP végpont | http://localhost:3000/mcp (`x-api-key`) |
+
+- Sandbox belépés: `admin@jegyzo.local` / `Jegyzo1234`; az API kulcs a
+  `tracker/README.md`-ben (a repó gyökér `.env`-jébe `ITSAPLAN_API_KEY` néven).
+- A seed a `JGY` projektet tölti be (11 Epic + 88 User Story, AC/DoD
+  checklistákkal), de **más projektet nem**.
+- Részletek, portok és a seed frissítése: [tracker/README.md](tracker/README.md).
+
 ## Dokumentumtérkép
 
 ```
@@ -81,6 +105,9 @@ docs/
 │   └── 01-implementacios-instrukciok.md
 └── 05-backlog/
     └── 00-epic-es-story-vazlat.md   # Epic/Story vázlat, It's a Plan JGY azonosítókkal
+
+tracker/                             # It's a Plan tracker stack + JGY seed adatok
+tools/itsaplan/                      # backlog import/export eszközök
 ```
 
 ## Konvenciók

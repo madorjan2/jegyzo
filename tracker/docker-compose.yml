@@ -1,0 +1,194 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# It's a Plan (tracker) — self-hosted stack, bundled with the Jegyzo sandbox.
+#
+#   cp .env.example .env        # then fill in the required secrets
+#   docker compose -f tracker/docker-compose.yml up -d
+#
+# Brings up Postgres, RustFS (attachments), api, worker, bot and web, and loads
+# the JGY backlog (tracker/seed/jgy-seed.sql) on a fresh volume — so a clone
+# reproduces the same 99 work items.
+#
+# Ports come from .env: API_PORT (3000) and WEB_PORT (3001).
+# ─────────────────────────────────────────────────────────────────────────────
+name: ${COMPOSE_PROJECT_NAME:-jegyzo-tracker}
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-itsaplan}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in tracker/.env}
+      POSTGRES_DB: ${POSTGRES_DB:-itsaplan}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-itsaplan} -d ${POSTGRES_DB:-itsaplan}']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # S3-compatible object store for attachments. Kept on the network only.
+  minio:
+    image: rustfs/rustfs:1.0.0
+    restart: unless-stopped
+    user: '0:0'
+    environment:
+      RUSTFS_ACCESS_KEY: ${S3_ACCESS_KEY_ID:?set S3_ACCESS_KEY_ID in tracker/.env}
+      RUSTFS_SECRET_KEY: ${S3_SECRET_ACCESS_KEY:?set S3_SECRET_ACCESS_KEY in tracker/.env}
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ['CMD', 'curl', '-fsS', '-o', '/dev/null', 'http://127.0.0.1:9000/health']
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  minio-init:
+    image: rustfs/rustfs:1.0.0
+    restart: 'no'
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID}
+      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY}
+      S3_BUCKET: ${S3_BUCKET:-planner-attachments}
+    entrypoint: >
+      /bin/sh -c "
+      curl -fsS -X PUT --aws-sigv4 aws:amz:us-east-1:s3 --user \"$$S3_ACCESS_KEY_ID:$$S3_SECRET_ACCESS_KEY\" http://minio:9000/\"$$S3_BUCKET\" &&
+      echo 'bucket ready: '\"$$S3_BUCKET\"
+      "
+
+  migrate:
+    image: ghcr.io/croffasia/itsaplan-api:${VERSION:-latest}
+    restart: 'no'
+    command: ['bun', 'run', 'packages/db/src/migrate.ts']
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-itsaplan}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-itsaplan}
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-}
+      SKIP_PRE_MIGRATION_BACKUP: ${SKIP_PRE_MIGRATION_BACKUP:-}
+    volumes:
+      - db-backups:/backups
+
+  # One-shot: loads the bundled JGY project when it is absent. Safe to re-run.
+  seed:
+    image: postgres:17-alpine
+    restart: 'no'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      PGHOST: postgres
+      PGUSER: ${POSTGRES_USER:-itsaplan}
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      PGDATABASE: ${POSTGRES_DB:-itsaplan}
+    volumes:
+      - ./seed:/seed:ro
+    entrypoint: ['/bin/sh', '/seed/seed.sh']
+
+  api:
+    image: ghcr.io/croffasia/itsaplan-api:${VERSION:-latest}
+    restart: unless-stopped
+    command: ['bun', 'run', 'apps/api/src/index.ts']
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      minio-init:
+        condition: service_completed_successfully
+      seed:
+        condition: service_completed_successfully
+    environment:
+      NODE_ENV: production
+      API_PORT: 3000
+      DATABASE_URL: postgres://${POSTGRES_USER:-itsaplan}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-itsaplan}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?set BETTER_AUTH_SECRET in tracker/.env}
+      APP_ENCRYPTION_KEY: ${APP_ENCRYPTION_KEY:?set APP_ENCRYPTION_KEY in tracker/.env}
+      API_URL: ${API_URL:?set API_URL in tracker/.env}
+      APP_URL: ${APP_URL:?set APP_URL in tracker/.env}
+      COOKIE_DOMAIN: ${COOKIE_DOMAIN:-}
+      S3_ENDPOINT: http://minio:9000
+      S3_BUCKET: ${S3_BUCKET:-planner-attachments}
+      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID}
+      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY}
+      S3_REGION: ${S3_REGION:-us-east-1}
+      S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-}
+      SSRF_ALLOWED_HOSTS: ${SSRF_ALLOWED_HOSTS:-}
+    healthcheck:
+      test: ['CMD', 'wget', '-q', '-O', '/dev/null', 'http://127.0.0.1:3000/']
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    ports:
+      - '${API_PORT:-3000}:3000'
+
+  worker:
+    image: ghcr.io/croffasia/itsaplan-worker:${VERSION:-latest}
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgres://${POSTGRES_USER:-itsaplan}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-itsaplan}
+      APP_ENCRYPTION_KEY: ${APP_ENCRYPTION_KEY:?set APP_ENCRYPTION_KEY in tracker/.env}
+      TELEMETRY_DISABLED: ${TELEMETRY_DISABLED:-}
+      DO_NOT_TRACK: ${DO_NOT_TRACK:-}
+      SSRF_ALLOWED_HOSTS: ${SSRF_ALLOWED_HOSTS:-}
+      S3_ENDPOINT: http://minio:9000
+      S3_BUCKET: ${S3_BUCKET:-planner-attachments}
+      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID}
+      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY}
+      S3_REGION: ${S3_REGION:-us-east-1}
+      S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-}
+
+  bot:
+    image: ghcr.io/croffasia/itsaplan-bot:${VERSION:-latest}
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgres://${POSTGRES_USER:-itsaplan}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-itsaplan}
+      APP_ENCRYPTION_KEY: ${APP_ENCRYPTION_KEY:?set APP_ENCRYPTION_KEY in tracker/.env}
+
+  web:
+    image: ghcr.io/croffasia/itsaplan-web:${VERSION:-latest}
+    restart: unless-stopped
+    depends_on:
+      - api
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      HOSTNAME: 0.0.0.0
+      API_URL: ${API_URL:?set API_URL in tracker/.env}
+      SERVICE_URL_API: http://api:3000
+      PRIVACY_URL: ${PRIVACY_URL:-}
+      TERMS_URL: ${TERMS_URL:-}
+    healthcheck:
+      test: ['CMD', 'wget', '-q', '-O', '/dev/null', 'http://127.0.0.1:3001/login']
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    ports:
+      - '${WEB_PORT:-3001}:3001'
+
+volumes:
+  postgres-data:
+  minio-data:
+  db-backups:

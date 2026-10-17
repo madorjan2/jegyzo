@@ -19,12 +19,14 @@ tesztelést.
 | --- | --- |
 | Termékspecifikáció, architektúra, docker szerződés | ✅ kész (`docs/`) |
 | Fejlesztői backlog (Epic + User Story + AC) | ✅ kész az It's a Plan `JGY` projektben |
-| **Alkalmazás kód (`backend/`, `frontend/`)** | ❌ **még nem létezik — ezt neked kell megírni** |
-| Docker Compose | ✅ kész, de az `api`/`web` szolgáltatás a kódot várja |
+| **Alkalmazás kód (`backend/`, `frontend/`)** | ✅ megvalósítva a `JGY` User Story-k alapján |
+| Docker Compose | ✅ kész — a `docker compose up -d` a teljes stacket indítja |
 
-**A feladatod:** megvalósítani a `JGY` projekt User Story-it, a repóban lévő
-specifikáció szerint. Nem kell és nem szabad tőlem/embertől kérdezni az
-eligazítást: minden, ami a munkához kell, ebben a repóban és a trackerben van.
+**Az állapot:** a `JGY` projekt User Story-i meg vannak valósítva a `backend/` és
+`frontend/` könyvtárban, a repóban lévő specifikáció szerint. A további munka
+(hibajavítás, bővítés) ugyanígy a story-kból indul. Nem kell és nem szabad
+tőlem/embertől kérdezni az eligazítást: minden, ami a munkához kell, ebben a
+repóban és a trackerben van.
 
 ## 2. Nem tárgyalható szerződés
 
@@ -179,9 +181,9 @@ Elérési címek: felület `http://localhost:5173` · API `http://localhost:4000
 
 ## 8. Ismert csapdák
 
-- **A `./backend` és `./frontend` könyvtár nem létezik**, ezért a
-  `docker compose up -d` a teljes stackre hibát ad, amíg meg nem írod őket. Ez
-  várt állapot, nem hiba.
+- **A `./backend` és `./frontend` könyvtár a helyén van**, a `docker compose up -d`
+  a teljes stacket indítja (api, web, postgres, mailhog, kiwi). Ha az `api` nem
+  indul, előbb a `docker compose logs api` kimenetét nézd.
 - **A `.env` már létezik** a munkakörnyezetben, de csak az `ITSAPLAN_API_KEY`-t
   tartalmazza — a többi érték a compose beépített alapértékeiből jön. Ha új
   változót vezetsz be, a `.env.example`-be vedd fel.
