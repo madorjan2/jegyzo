@@ -23,21 +23,24 @@ stack konténerekből épül.
 ```bash
 git clone <repo-url> && cd jegyzo
 
-# 1) Jegyzo stack (api, web, postgres, mailhog, kiwi TCMS)
 cp .env.example .env          # Windows: copy .env.example .env
-docker compose up -d
+docker compose up -d          # MINDEN: alkalmazás + Kiwi TCMS + It's a Plan tracker
 docker compose ps             # healthcheck állapotok
-
-# 2) It's a Plan tracker + a JGY backlog (külön compose stack)
-cp tracker/.env.example tracker/.env      # 5 kötelező érték kitöltése
-docker compose -f tracker/docker-compose.yml up -d
 ```
 
-A `.env`-be kerülő `ITSAPLAN_API_KEY` értéke a `tracker/README.md`-ben
-dokumentált sandbox kulcs. Az elérési címek, a belépési adatok, az adatok
-visszaállítása és a hibakeresés a lentebbi szakaszokban, illetve a
+Egyetlen compose stack van: a fenti parancs az alkalmazást, a Kiwi TCMS-t és az
+It's a Plan trackert (a `JGY` backlog forrását) is elindítja. Az elérési címek, a
+belépési adatok, az adatok visszaállítása és a hibakeresés a lentebbi
+szakaszokban, illetve a
 [docs/02-arkitektura/02-docker-es-futtatas.md](docs/02-arkitektura/02-docker-es-futtatas.md)
 fájlban vannak.
+
+Csak a tracker (a `JGY` backlog) indítása:
+
+```bash
+docker compose up -d tracker-postgres tracker-minio tracker-minio-init \
+  tracker-migrate tracker-seed tracker-api tracker-worker tracker-bot tracker-web
+```
 
 ---
 
@@ -89,14 +92,13 @@ A pontos indítási/törlési/újratöltési lépések: [docs/02-architektura/02
 
 ## It's a Plan tracker (a `JGY` backlog)
 
-A fejlesztői backlog egy **It's a Plan** példányban él. A tracker stack és a `JGY`
-projekt teljes adatkészlete a repóban van (`tracker/`), így egy friss klón
-ugyanazokat a work item-eket kapja — külön compose fájl, a Jegyzo stacktől
-függetlenül:
+A fejlesztői backlog egy **It's a Plan** példányban él. A tracker ugyanannak a
+compose stacknek a része (`tracker-*` szolgáltatások), a `JGY` projekt teljes
+adatkészlete pedig a repóban van (`tracker/seed/`), így egy friss klón
+ugyanazokat a work item-eket kapja:
 
 ```bash
-cp tracker/.env.example tracker/.env      # töltsd ki a kötelező értékeket
-docker compose -f tracker/docker-compose.yml up -d
+docker compose up -d          # a tracker is elindul (lásd fentebb)
 ```
 
 | Szolgáltatás | Cím |
@@ -106,10 +108,14 @@ docker compose -f tracker/docker-compose.yml up -d
 | MCP végpont | http://localhost:3000/mcp (`x-api-key`) |
 
 - Sandbox belépés: `admin@jegyzo.local` / `Jegyzo1234`; az API kulcs a
-  `tracker/README.md`-ben (a repó gyökér `.env`-jébe `ITSAPLAN_API_KEY` néven).
+  `tracker/README.md`-ben (a repó gyökér `.env`-jébe `ITSAPLAN_API_KEY` néven
+  előtöltve).
 - A seed a `JGY` projektet tölti be (11 Epic + 88 User Story, AC/DoD
   checklistákkal), de **más projektet nem**.
-- Részletek, portok és a seed frissítése: [tracker/README.md](tracker/README.md).
+- A tracker kiadás rögzítve van (`TRACKER_VERSION=1.1.0`), mert a seed ehhez a
+  séma-sorrendhez illeszkedik; verziófrissítésnél a seedet újra kell generálni.
+  Részletek, portok és a seed frissítése: [tracker/README.md](tracker/README.md).
+- A tracker portjai a gyökér `.env`-ben: `TRACKER_API_PORT`, `TRACKER_WEB_PORT`.
 
 ## Dokumentumtérkép
 

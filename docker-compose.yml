@@ -1,18 +1,21 @@
 # Jegyzo – egyparancsos QA sandbox környezet
 #
-#   docker compose up -d              # minden szolgáltatás
-#   docker compose up -d postgres mailhog kiwi-db kiwi-init kiwi   # csak infrastruktúra
-#   docker compose down               # leállítás (az adatok megmaradnak)
-#   docker compose down -v            # leállítás ÉS összes adat törlése
+#   docker compose up -d        # MINDEN: alkalmazás + Kiwi TCMS + It's a Plan tracker
+#   docker compose ps           # állapotok és healthcheckek
+#   docker compose down         # leállítás (az adatok megmaradnak)
+#   docker compose down -v      # leállítás ÉS az összes adat törlése
 #
-# Az `api` és `web` szolgáltatás build kontextusa (./backend, ./frontend) csak
-# akkor létezik, ha az alkalmazás kódja már elkészült – lásd
-# docs/02-architektura/02-docker-es-futtatas.md
+# Egyetlen stack: a Jegyzo alkalmazás (api, web, postgres, mailhog), a Kiwi TCMS
+# tesztmenedzsment és az It's a Plan tracker (a JGY backlog forrása) együtt.
+# Az alkalmazás build kontextusa: ./backend és ./frontend (mindkettőben Dockerfile).
+# A tracker adatai a ./tracker/seed/jgy-seed.sql fájlból töltődnek be.
+#
+# Részletek: README.md, docs/02-architektura/02-docker-es-futtatas.md, tracker/README.md
 
 name: jegyzo
 
 services:
-  # ---------------------------------------------------------------- adatbázis
+  # ------------------------------------------------------------ alkalmazás DB
   postgres:
     image: postgres:16-alpine
     container_name: jegyzo-postgres
@@ -30,6 +33,7 @@ services:
       interval: 5s
       timeout: 3s
       retries: 20
+      start_period: 30s
 
   # ------------------------------------------------------------ levélfogadó
   # Minden kimenő e-mail ide fut be; valódi küldés nincs.
@@ -42,8 +46,6 @@ services:
       - "${MAILHOG_UI_PORT:-8025}:8025"
 
   # -------------------------------------------------------------- alkalmazás
-  # A ./backend könyvtárat és a backend/Dockerfile-t az implementáló agent
-  # készíti el. Elvárt szerződés: lásd docs/02-architektura/01-rendszerkep.md
   api:
     build:
       context: ./backend
@@ -85,8 +87,6 @@ services:
       retries: 12
       start_period: 90s
 
-  # A ./frontend könyvtárat és a frontend/Dockerfile-t az implementáló agent
-  # készíti el. A konténer az elkészült felületet az 5173-as porton szolgálja ki.
   web:
     build:
       context: ./frontend
@@ -120,6 +120,7 @@ services:
       interval: 5s
       timeout: 5s
       retries: 30
+      start_period: 30s
 
   # Egyszer lefutó inicializálás: séma, admin felhasználó, domain, jogosultságok.
   # Enélkül a Kiwi TCMS nem használható (a hivatalos út interaktív, ezért itt
@@ -182,7 +183,200 @@ services:
       retries: 20
       start_period: 60s
 
+  # ------------------------------------------------------ It's a Plan tracker
+  # A fejlesztői backlog (JGY projekt) forrása: önálló It's a Plan példány.
+  # A seed (tracker/seed/jgy-seed.sql) csak akkor töltődik be, ha a JGY projekt
+  # még nem létezik, és a JGY-n kívül mást nem hoz létre.
+  #
+  # FONTOS: a TRACKER_VERSION a seeddel együtt mozog. A seed a fenti kiadás
+  # séma-sorrendjét követi, ezért verziófrissítésnél újra kell generálni
+  # (python tools/itsaplan/export_tracker_seed.py), különben a seed betöltése
+  # elhasal ("missing data for column ...").
+  tracker-postgres:
+    image: postgres:17-alpine
+    container_name: jegyzo-tracker-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${TRACKER_POSTGRES_USER:-itsaplan}
+      POSTGRES_PASSWORD: ${TRACKER_POSTGRES_PASSWORD:?set TRACKER_POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${TRACKER_POSTGRES_DB:-itsaplan}
+    volumes:
+      - tracker-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${TRACKER_POSTGRES_USER:-itsaplan} -d ${TRACKER_POSTGRES_DB:-itsaplan}"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+
+  # S3-kompatibilis objektumtároló a csatolmányoknak. Csak a belső hálózaton él.
+  tracker-minio:
+    image: rustfs/rustfs:1.0.0
+    container_name: jegyzo-tracker-minio
+    restart: unless-stopped
+    user: '0:0'
+    environment:
+      RUSTFS_ACCESS_KEY: ${TRACKER_S3_ACCESS_KEY_ID:?set TRACKER_S3_ACCESS_KEY_ID in .env}
+      RUSTFS_SECRET_KEY: ${TRACKER_S3_SECRET_ACCESS_KEY:?set TRACKER_S3_SECRET_ACCESS_KEY in .env}
+    volumes:
+      - tracker-minio-data:/data
+    healthcheck:
+      test: ['CMD', 'curl', '-fsS', '-o', '/dev/null', 'http://127.0.0.1:9000/health']
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  tracker-minio-init:
+    image: rustfs/rustfs:1.0.0
+    container_name: jegyzo-tracker-minio-init
+    restart: 'no'
+    depends_on:
+      tracker-minio:
+        condition: service_healthy
+    environment:
+      S3_ACCESS_KEY_ID: ${TRACKER_S3_ACCESS_KEY_ID}
+      S3_SECRET_ACCESS_KEY: ${TRACKER_S3_SECRET_ACCESS_KEY}
+      S3_BUCKET: ${TRACKER_S3_BUCKET:-planner-attachments}
+    entrypoint: >
+      /bin/sh -c "
+      curl -fsS -X PUT --aws-sigv4 aws:amz:us-east-1:s3 --user \"$$S3_ACCESS_KEY_ID:$$S3_SECRET_ACCESS_KEY\" http://tracker-minio:9000/\"$$S3_BUCKET\" &&
+      echo 'bucket ready: '\"$$S3_BUCKET\"
+      "
+
+  tracker-migrate:
+    image: ghcr.io/croffasia/itsaplan-api:${TRACKER_VERSION:-1.1.0}
+    container_name: jegyzo-tracker-migrate
+    restart: 'no'
+    command: ['bun', 'run', 'packages/db/src/migrate.ts']
+    depends_on:
+      tracker-postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://${TRACKER_POSTGRES_USER:-itsaplan}:${TRACKER_POSTGRES_PASSWORD}@tracker-postgres:5432/${TRACKER_POSTGRES_DB:-itsaplan}
+      BACKUP_RETENTION_DAYS: ${TRACKER_BACKUP_RETENTION_DAYS:-30}
+      SKIP_PRE_MIGRATION_BACKUP: ${TRACKER_SKIP_PRE_MIGRATION_BACKUP:-}
+    volumes:
+      - tracker-db-backups:/backups
+
+  # Egyszer lefutó seed: a JGY projektet tölti be, ha még nincs. Újrafuttatható.
+  tracker-seed:
+    image: postgres:17-alpine
+    container_name: jegyzo-tracker-seed
+    restart: 'no'
+    depends_on:
+      tracker-postgres:
+        condition: service_healthy
+      tracker-migrate:
+        condition: service_completed_successfully
+    environment:
+      PGHOST: tracker-postgres
+      PGUSER: ${TRACKER_POSTGRES_USER:-itsaplan}
+      PGPASSWORD: ${TRACKER_POSTGRES_PASSWORD}
+      PGDATABASE: ${TRACKER_POSTGRES_DB:-itsaplan}
+    volumes:
+      - ./tracker/seed:/seed:ro
+    entrypoint: ['/bin/sh', '/seed/seed.sh']
+
+  tracker-api:
+    image: ghcr.io/croffasia/itsaplan-api:${TRACKER_VERSION:-1.1.0}
+    container_name: jegyzo-tracker-api
+    restart: unless-stopped
+    command: ['bun', 'run', 'apps/api/src/index.ts']
+    depends_on:
+      tracker-postgres:
+        condition: service_healthy
+      tracker-migrate:
+        condition: service_completed_successfully
+      tracker-minio-init:
+        condition: service_completed_successfully
+      tracker-seed:
+        condition: service_completed_successfully
+    environment:
+      NODE_ENV: production
+      API_PORT: 3000
+      DATABASE_URL: postgres://${TRACKER_POSTGRES_USER:-itsaplan}:${TRACKER_POSTGRES_PASSWORD}@tracker-postgres:5432/${TRACKER_POSTGRES_DB:-itsaplan}
+      BETTER_AUTH_SECRET: ${TRACKER_BETTER_AUTH_SECRET:?set TRACKER_BETTER_AUTH_SECRET in .env}
+      APP_ENCRYPTION_KEY: ${TRACKER_APP_ENCRYPTION_KEY:?set TRACKER_APP_ENCRYPTION_KEY in .env}
+      API_URL: http://localhost:${TRACKER_API_PORT:-3000}
+      APP_URL: http://localhost:${TRACKER_WEB_PORT:-3001}
+      S3_ENDPOINT: http://tracker-minio:9000
+      S3_BUCKET: ${TRACKER_S3_BUCKET:-planner-attachments}
+      S3_ACCESS_KEY_ID: ${TRACKER_S3_ACCESS_KEY_ID}
+      S3_SECRET_ACCESS_KEY: ${TRACKER_S3_SECRET_ACCESS_KEY}
+      S3_REGION: ${TRACKER_S3_REGION:-us-east-1}
+      S3_FORCE_PATH_STYLE: ${TRACKER_S3_FORCE_PATH_STYLE:-}
+    ports:
+      - '${TRACKER_API_PORT:-3000}:3000'
+    healthcheck:
+      test: ['CMD', 'wget', '-q', '-O', '/dev/null', 'http://127.0.0.1:3000/']
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  tracker-worker:
+    image: ghcr.io/croffasia/itsaplan-worker:${TRACKER_VERSION:-1.1.0}
+    container_name: jegyzo-tracker-worker
+    restart: unless-stopped
+    depends_on:
+      tracker-postgres:
+        condition: service_healthy
+      tracker-migrate:
+        condition: service_completed_successfully
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgres://${TRACKER_POSTGRES_USER:-itsaplan}:${TRACKER_POSTGRES_PASSWORD}@tracker-postgres:5432/${TRACKER_POSTGRES_DB:-itsaplan}
+      APP_ENCRYPTION_KEY: ${TRACKER_APP_ENCRYPTION_KEY:?set TRACKER_APP_ENCRYPTION_KEY in .env}
+      TELEMETRY_DISABLED: ${TRACKER_TELEMETRY_DISABLED:-1}
+      S3_ENDPOINT: http://tracker-minio:9000
+      S3_BUCKET: ${TRACKER_S3_BUCKET:-planner-attachments}
+      S3_ACCESS_KEY_ID: ${TRACKER_S3_ACCESS_KEY_ID}
+      S3_SECRET_ACCESS_KEY: ${TRACKER_S3_SECRET_ACCESS_KEY}
+      S3_REGION: ${TRACKER_S3_REGION:-us-east-1}
+      S3_FORCE_PATH_STYLE: ${TRACKER_S3_FORCE_PATH_STYLE:-}
+
+  tracker-bot:
+    image: ghcr.io/croffasia/itsaplan-bot:${TRACKER_VERSION:-1.1.0}
+    container_name: jegyzo-tracker-bot
+    restart: unless-stopped
+    depends_on:
+      tracker-postgres:
+        condition: service_healthy
+      tracker-migrate:
+        condition: service_completed_successfully
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgres://${TRACKER_POSTGRES_USER:-itsaplan}:${TRACKER_POSTGRES_PASSWORD}@tracker-postgres:5432/${TRACKER_POSTGRES_DB:-itsaplan}
+      APP_ENCRYPTION_KEY: ${TRACKER_APP_ENCRYPTION_KEY:?set TRACKER_APP_ENCRYPTION_KEY in .env}
+
+  tracker-web:
+    image: ghcr.io/croffasia/itsaplan-web:${TRACKER_VERSION:-1.1.0}
+    container_name: jegyzo-tracker-web
+    restart: unless-stopped
+    depends_on:
+      - tracker-api
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      HOSTNAME: 0.0.0.0
+      API_URL: http://localhost:${TRACKER_API_PORT:-3000}
+      SERVICE_URL_API: http://tracker-api:3000
+      PRIVACY_URL: ${TRACKER_PRIVACY_URL:-}
+      TERMS_URL: ${TRACKER_TERMS_URL:-}
+    ports:
+      - '${TRACKER_WEB_PORT:-3001}:3001'
+    healthcheck:
+      test: ['CMD', 'wget', '-q', '-O', '/dev/null', 'http://127.0.0.1:3001/login']
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
 volumes:
   postgres-data:
   kiwi-db-data:
   kiwi-uploads:
+  tracker-postgres-data:
+  tracker-minio-data:
+  tracker-db-backups:

@@ -4,12 +4,17 @@
 This is a maintenance tool (run by hand when the JGY backlog changes), not part
 of the app. It exports exactly the JGY project's rows (never other projects),
 rewrites the account into a documented sandbox login, and mints a known sandbox
-API key, so `docker compose -f tracker/docker-compose.yml up -d` reproduces the
-same work items on a fresh volume.
+API key, so `docker compose up -d` (tracker-postgres + tracker-seed services)
+reproduces the same work items on a fresh volume.
+
+The seed must match TRACKER_VERSION: it is exported in column order of the
+release that produced it. Bumping TRACKER_VERSION requires regenerating the seed,
+otherwise the load fails with "missing data for column ..." / "extra data after
+last expected column".
 
 Usage:
     python tools/itsaplan/export_tracker_seed.py            # against the local stack
-    TRACKER_PG_CONTAINER=itsaplan-postgres-1 ...            # override container
+    TRACKER_PG_CONTAINER=...                                # override container
 
 Requirements: the tracker's postgres container must be reachable via `docker exec`.
 """
@@ -25,7 +30,7 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 OUT = ROOT / "tracker" / "seed" / "jgy-seed.sql"
 
-PG = os.environ.get("TRACKER_PG_CONTAINER", "itsaplan-postgres-1")
+PG = os.environ.get("TRACKER_PG_CONTAINER", "jegyzo-tracker-postgres")
 PGUSER = os.environ.get("TRACKER_PG_USER", "itsaplan")
 PGDB = os.environ.get("TRACKER_PG_DB", "itsaplan")
 

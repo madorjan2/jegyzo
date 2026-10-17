@@ -67,6 +67,10 @@ A munka az **It's a Plan** trackerben van, `JGY` projekt (team: `madorjan`):
 
 ### Elérés
 
+A tracker **ugyanannak a compose stacknek a része** (`tracker-*` szolgáltatások):
+`docker compose up -d` elindítja az alkalmazással együtt. Külön compose fájl
+nincs. A seed a `JGY` projektet tölti be a `tracker-postgres` kötetbe.
+
 **A) MCP** (ha elérhető a sessionben): `.omp/mcp.json` → `itsaplan` szerver,
 `http://localhost:3000/mcp`, az API kulcsot a `.env`-ből olvassa. Ha nem
 látszik, indítsd újra az MCP-t (`/mcp reload`).
@@ -149,6 +153,10 @@ docker compose ps                      # healthcheck állapotok
 # amíg nincs kész az alkalmazás kódja, csak az infrastruktúra
 docker compose up -d postgres mailhog kiwi-db kiwi-init kiwi
 
+# csak a tracker (a JGY backlog) indítása
+docker compose up -d tracker-postgres tracker-minio tracker-minio-init \
+  tracker-migrate tracker-seed tracker-api tracker-worker tracker-bot tracker-web
+
 # adatok visszaállítása tiszta állapotba
 docker compose exec api npm run db:reset
 
@@ -162,7 +170,8 @@ docker compose down -v && docker compose up -d
 
 Elérési címek: felület `http://localhost:5173` · API `http://localhost:4000/api`
 · API docs `http://localhost:4000/api/docs` · health `http://localhost:4000/health`
-· MailHog `http://localhost:8025` · Kiwi TCMS `https://localhost:8443`.
+· MailHog `http://localhost:8025` · Kiwi TCMS `https://localhost:8443` ·
+tracker felület `http://localhost:3001` · tracker API/MCP `http://localhost:3000`.
 
 ## 7. Dokumentumtérkép
 
@@ -187,6 +196,11 @@ Elérési címek: felület `http://localhost:5173` · API `http://localhost:4000
 - **A `.env` már létezik** a munkakörnyezetben, de csak az `ITSAPLAN_API_KEY`-t
   tartalmazza — a többi érték a compose beépített alapértékeiből jön. Ha új
   változót vezetsz be, a `.env.example`-be vedd fel.
+- **A tracker kiadása rögzítve van.** A `TRACKER_VERSION` (alapból `1.1.0`) és a
+  `tracker/seed/jgy-seed.sql` szorosan összetartozik: a seed a forrás kiadás
+  oszlopsorrendjét követi, ezért nagyobb kiadásnál a betöltés
+  `missing data for column ...` hibával elhasal. Ne emeld a `TRACKER_VERSION`-t a
+  seed újragenerálása nélkül (lásd `tracker/README.md`).
 - **A Kiwi TCMS a 8080-as portot használja**, ami a fejlesztői gépen foglalt
   lehet. Ilyenkor a konténer nem indul: állítsd át a `KIWI_PORT`-ot a `.env`-ben.
 - **A tracker API-ja nem megbízható HTTP státuszokban**: előfordul, hogy egy

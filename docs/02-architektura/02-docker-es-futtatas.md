@@ -20,7 +20,7 @@ cp .env.example .env       # Linux / macOS
 ## 2. Indítás
 
 ```bash
-docker compose up -d          # minden szolgáltatás (api, web, postgres, mailhog, kiwi)
+docker compose up -d          # minden szolgáltatás (api, web, postgres, mailhog, kiwi, tracker-*)
 docker compose ps             # állapot és healthcheck
 ```
 
@@ -28,6 +28,13 @@ Ha csak az infrastruktúrát (adatbázis, MailHog, Kiwi) akarod indítani:
 
 ```bash
 docker compose up -d postgres mailhog kiwi-db kiwi-init kiwi
+```
+
+Ha csak a trackert (az It's a Plan `JGY` backlogot):
+
+```bash
+docker compose up -d tracker-postgres tracker-minio tracker-minio-init \
+  tracker-migrate tracker-seed tracker-api tracker-worker tracker-bot tracker-web
 ```
 
 ## 3. Szolgáltatások
@@ -41,6 +48,14 @@ docker compose up -d postgres mailhog kiwi-db kiwi-init kiwi
 | PostgreSQL | `jegyzo-postgres` | localhost:5432 | `jegyzo` / `jegyzo_dev_pw` |
 | MailHog | `jegyzo-mailhog` | http://localhost:8025 | – |
 | Kiwi TCMS | `jegyzo-kiwi` | **https://localhost:8443** | `KIWI_ADMIN_USER` / `KIWI_ADMIN_PASSWORD` (alapból `admin` / `kiwiadmin123`) |
+| It's a Plan felület | `jegyzo-tracker-web` | http://localhost:3001 | `admin@jegyzo.local` / `Jegyzo1234` |
+| It's a Plan API / MCP | `jegyzo-tracker-api` | http://localhost:3000 (`/docs`, `/mcp`) | `x-api-key` (`ITSAPLAN_API_KEY`) |
+| Tracker PostgreSQL | `jegyzo-tracker-postgres` | csak belső hálózat | `TRACKER_POSTGRES_*` |
+
+> Az It's a Plan tracker a `JGY` backlog forrása (`tracker-*` szolgáltatások,
+> seed: `tracker/seed/jgy-seed.sql`). A `TRACKER_VERSION` rögzített kiadás, mert
+> a seed ehhez a séma-sorrendhez illeszkedik — lásd
+> [tracker/README.md](../../tracker/README.md).
 
 ### 3.1 Kiwi TCMS
 
@@ -73,7 +88,9 @@ docker compose down -v
 docker compose up -d
 ```
 
-> A `down -v` a Kiwi TCMS adatait is törli; utána a `kiwi-init` újra lefut.
+> A `down -v` a Kiwi TCMS és az It's a Plan tracker adatait is törli; utána a
+> `kiwi-init` és a `tracker-seed` újra lefut (a seed visszaállítja a `JGY`
+> projektet és a 99 work itemet).
 
 ## 5. Naplók és hibakeresés
 
@@ -91,6 +108,8 @@ docker compose logs kiwi-init       # Kiwi inicializálás kimenetele
 | Kiwi TCMS „502 / nem tölt be” | A `kiwi-init` még fut, vagy hibával leállt: `docker compose logs kiwi-init`. |
 | Nem jön e-mail | Minden levél a MailHog-ban van: http://localhost:8025 – ellenőrizd, hogy az API a `mailhog:1025` címet használja. |
 | A felület nem éri el az API-t | CORS: az API-nak engedélyeznie kell a `CORS_ORIGIN` origint. Böngésző konzol ellenőrzése. |
+| `jegyzo-tracker-seed` hibával áll le (`missing data for column ...`) | A `TRACKER_VERSION` és a seed szétcsúszott: a seed a forrás kiadás oszlopsorrendjét követi. Állítsd vissza a `TRACKER_VERSION`-t a seedhez illő kiadásra (`1.1.0`), vagy generáld újra a seedet (`python tools/itsaplan/export_tracker_seed.py`, lásd [tracker/README.md](../../tracker/README.md)). |
+| A tracker felülete nem tölt be | A `tracker-migrate` és `tracker-seed` egyszer lefutó konténer: `docker compose logs tracker-migrate tracker-seed`. |
 | Mindent elölről | `docker compose down -v && docker compose up -d` |
 
 ### 5.1 Kiwi TCMS és a 8080-as port
