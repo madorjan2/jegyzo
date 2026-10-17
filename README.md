@@ -1,5 +1,46 @@
 # Jegyzo – jegyértékesítő sandbox (QA / agentic testing)
 
+> ## ⚠️ Figyelmeztetés: a projekt 100%-ban „vibe coded”
+>
+> Ebben a repóban **egyetlen sort sem írtam én** (a repó tulajdonosa). A teljes
+> dokumentáció, a specifikáció, az It's a Plan backlog (`JGY`), a `backend/` és
+> `frontend/` alkalmazás, a Docker- és tracker stack, valamint a seed adatok
+> **AI coding agentek promptokból generált kimenetei** — kézi átírás, érdemi
+> emberi review és hagyományos fejlesztési folyamat nélkül.
+>
+> Ezért a kód **nem termelési minőségű**, és nem tekintendő referenciának arra,
+> hogyan kell szoftvert írni. A repó célja épp az, hogy egy hitelesen kaotikus,
+> elosztott rendszeren lehessen manuális, automatizált és agentic tesztelést
+> gyakorolni: a benne lévő hibák nagy része nem véletlen, hanem a sandbox
+> tananyaga.
+
+## Futtatás
+
+**Előfeltétel:** Docker (Compose v2) és internet az image-letöltésekhez. Lokális
+Node.js vagy Python **nem** szükséges: mindkét Dockerfile többfázisú build, a
+stack konténerekből épül.
+
+```bash
+git clone <repo-url> && cd jegyzo
+
+# 1) Jegyzo stack (api, web, postgres, mailhog, kiwi TCMS)
+cp .env.example .env          # Windows: copy .env.example .env
+docker compose up -d
+docker compose ps             # healthcheck állapotok
+
+# 2) It's a Plan tracker + a JGY backlog (külön compose stack)
+cp tracker/.env.example tracker/.env      # 5 kötelező érték kitöltése
+docker compose -f tracker/docker-compose.yml up -d
+```
+
+A `.env`-be kerülő `ITSAPLAN_API_KEY` értéke a `tracker/README.md`-ben
+dokumentált sandbox kulcs. Az elérési címek, a belépési adatok, az adatok
+visszaállítása és a hibakeresés a lentebbi szakaszokban, illetve a
+[docs/02-arkitektura/02-docker-es-futtatas.md](docs/02-arkitektura/02-docker-es-futtatas.md)
+fájlban vannak.
+
+---
+
 A **Jegyzo** egy fiktív, magyar online jegyértékesítő platform (koncert- és egyéb
 események), amely kifejezetten **QA sandboxként** készül: a célja, hogy a
 tesztelést tanuló / tesztelő kollégák egy **valósághű, elosztott rendszeren**
@@ -17,7 +58,7 @@ A projekt két részből áll:
    szoftver **szándékosan nem hibamentes**: a QA feladata éppen ezek felderítése.
 
 > Az alkalmazás a `backend/` és `frontend/` könyvtárban van; a teljes stack a
-> `docker compose up -d` paranccsal indul (lásd lentebb).
+> `docker compose up -d` paranccsal indul (lásd fentebb).
 
 ---
 
@@ -33,21 +74,7 @@ A projekt két részből áll:
 | Epic / User Story backlog | ✅ vázlat a repóban, forrás: It's a Plan `JGY` |
 | Alkalmazás kód | ✅ megvalósítva (`backend/`, `frontend/`) — a story-k alapján |
 
-## Gyors indítás (QA kollégáknak)
-
-```bash
-# 1) környezeti változók
-copy .env.example .env        # Windows
-cp .env.example .env          # Linux / macOS
-
-# 2) minden szolgáltatás indítása
-docker compose up -d
-
-# 3) állapot
-docker compose ps
-```
-
-### Szolgáltatások és elérési címek
+## Szolgáltatások és elérési címek
 
 | Szolgáltatás | Cím | Megjegyzés |
 | --- | --- | --- |
