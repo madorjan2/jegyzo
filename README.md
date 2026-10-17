@@ -107,9 +107,11 @@ docker compose up -d          # a tracker is elindul (lásd fentebb)
 | Tracker REST API | http://localhost:3000 (OpenAPI: http://localhost:3000/docs) |
 | MCP végpont | http://localhost:3000/mcp (`x-api-key`) |
 
-- Sandbox belépés: `admin@jegyzo.local` / `Jegyzo1234`; az API kulcs a
-  `tracker/README.md`-ben (a repó gyökér `.env`-jébe `ITSAPLAN_API_KEY` néven
-  előtöltve).
+- Sandbox belépés: `admin@jegyzo.local` / `Jegyzo1234` — ez a seedelt fiók, egyben az
+  instance tulajdonosa és a `JGY` team/projekt gazdája; **ne regisztrálj új fiókot** a
+  tracker első indításánál, mert az nem fér hozzá a projekthez (részletek:
+  [tracker/README.md](tracker/README.md)). Az API kulcs ugyanott (a repó gyökér `.env`-jébe
+  `ITSAPLAN_API_KEY` néven előtöltve).
 - A seed a `JGY` projektet tölti be (11 Epic + 88 User Story, AC/DoD
   checklistákkal), de **más projektet nem**.
 - A tracker kiadás rögzítve van (`TRACKER_VERSION=1.1.0`), mert a seed ehhez a

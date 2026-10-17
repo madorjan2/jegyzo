@@ -201,6 +201,13 @@ tracker felület `http://localhost:3001` · tracker API/MCP `http://localhost:30
   oszlopsorrendjét követi, ezért nagyobb kiadásnál a betöltés
   `missing data for column ...` hibával elhasal. Ne emeld a `TRACKER_VERSION`-t a
   seed újragenerálása nélkül (lásd `tracker/README.md`).
+- **A tracker első indításánál ne regisztrálj új fiókot.** A login oldal felkínálja a
+  regisztrációt (upstream `registration: open`), de az így létrejött fiók nem tagja a
+  `JGY` projektnek — upstream csak a legelső fióknak ad `god` szerepet, minden új
+  fiók saját teamet kap. Jelentkezz be a seedelt fiókkal
+  (`admin@jegyzo.local` / `Jegyzo1234`); ha mégis keletkezett másik fiók, mint
+  tulajdonos hívd meg a `JGY` projektbe (a meghívó link, nem e-mail), lásd
+  `tracker/README.md`.
 - **A Kiwi TCMS a 8080-as portot használja**, ami a fejlesztői gépen foglalt
   lehet. Ilyenkor a konténer nem indul: állítsd át a `KIWI_PORT`-ot a `.env`-ben.
 - **A tracker API-ja nem megbízható HTTP státuszokban**: előfordul, hogy egy

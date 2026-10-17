@@ -5,8 +5,8 @@
 
 SET session_replication_role = replica;  -- load parents/children without FK ordering
 BEGIN;
--- Account (sandbox login, password: Jegyzo1234)
-INSERT INTO "user" (id, name, email, email_verified, created_at, updated_at) SELECT 'uhumplWl5jkvQ9cxVGb6DdkhhUkD2vgr', 'Jegyzo Admin', 'admin@jegyzo.local', true, COALESCE((SELECT created_at FROM "user" WHERE id = 'uhumplWl5jkvQ9cxVGb6DdkhhUkD2vgr'), now()), now() WHERE NOT EXISTS (SELECT 1 FROM "user" WHERE id = 'uhumplWl5jkvQ9cxVGb6DdkhhUkD2vgr');
+-- Account (sandbox login, password: Jegyzo1234, instance owner: role = god)
+INSERT INTO "user" (id, name, email, email_verified, role, created_at, updated_at) SELECT 'uhumplWl5jkvQ9cxVGb6DdkhhUkD2vgr', 'Jegyzo Admin', 'admin@jegyzo.local', true, 'god', COALESCE((SELECT created_at FROM "user" WHERE id = 'uhumplWl5jkvQ9cxVGb6DdkhhUkD2vgr'), now()), now() WHERE NOT EXISTS (SELECT 1 FROM "user" WHERE id = 'uhumplWl5jkvQ9cxVGb6DdkhhUkD2vgr');
 DELETE FROM account WHERE user_id = 'uhumplWl5jkvQ9cxVGb6DdkhhUkD2vgr' AND provider_id = 'credential';
 INSERT INTO account (id, account_id, provider_id, user_id, password, created_at, updated_at) VALUES ('lGYEqYzoGrzio0YfxamSULEfIGeSVZnm', 'uhumplWl5jkvQ9cxVGb6DdkhhUkD2vgr', 'credential', 'uhumplWl5jkvQ9cxVGb6DdkhhUkD2vgr', '3b1b084c2c089de48ac7ef6f54c4241b:bba298ce29f21c3d0fbc91433edb8ff321d684bbc6b205b33867be36878c8a5c9a8888f14fc32cda1e972b34b2187dbfea8addf10834c8676154291702029eca', '2026-09-24 16:34:12.767', '2026-09-24 16:34:12.767');
 -- API key (plaintext: itp_jegyzoSandboxKey000000000000000000000000000000000000000000000000)

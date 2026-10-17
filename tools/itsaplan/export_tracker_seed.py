@@ -114,10 +114,15 @@ BEGIN;
 """)
 
     # --- sandbox identity -------------------------------------------------
+    # role='god' on purpose: upstream grants it to the very first account created on
+    # an instance, and this seed *is* that account — it inserts the row directly, so
+    # the sign-up hook that would have set the role never runs. Without it the sandbox
+    # login is a plain user: owner of the JGY team and project, but no instance-level
+    # rights (god mode serves /god/*: members, teams, auth settings, invites).
     parts.append("-- Account (sandbox login, password: %s)\n" % SANDBOX_PASSWORD)
     parts.append(
-        f"INSERT INTO \"user\" (id, name, email, email_verified, created_at, updated_at) "
-        f"SELECT {sql_str(uid)}, {sql_str(SANDBOX_NAME)}, {sql_str(SANDBOX_EMAIL)}, true, "
+        f"INSERT INTO \"user\" (id, name, email, email_verified, role, created_at, updated_at) "
+        f"SELECT {sql_str(uid)}, {sql_str(SANDBOX_NAME)}, {sql_str(SANDBOX_EMAIL)}, true, 'god', "
         f"COALESCE((SELECT created_at FROM \"user\" WHERE id = {sql_str(uid)}), now()), now() "
         f"WHERE NOT EXISTS (SELECT 1 FROM \"user\" WHERE id = {sql_str(uid)});\n"
     )

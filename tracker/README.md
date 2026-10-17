@@ -42,6 +42,7 @@ only — other projects of the source instance are never included). Log in with:
 | --- | --- |
 | E-mail | `admin@jegyzo.local` |
 | Password | `Jegyzo1234` |
+| Role | instance owner (`god`), owner of the `JGY` team and project |
 | API key | `itp_jegyzoSandboxKey000000000000000000000000000000000000000000000000` |
 
 The API key is pre-filled in the repo-root `.env` as `ITSAPLAN_API_KEY`, so the tooling in
@@ -52,6 +53,52 @@ curl -s "http://localhost:3000/projects/JGY/issues?limit=200" \
   -H "x-api-key: $ITSAPLAN_API_KEY" | python -c "import json,sys;print(len(json.load(sys.stdin)))"
 # 99
 ```
+
+## First launch: sign in, do not register
+
+Upstream ships with registration open (`registration: open`), so the login page offers
+account creation next to sign-in. An account created there is **not** the sandbox owner:
+upstream hands `god` to the very first account of an instance only, and every new account
+gets a team of its own. The `JGY` project belongs to the seeded team, so a self-registered
+account opens to an empty project list and cannot reach the backlog at all.
+
+Sign in with the seeded account instead — it is the instance owner (`role = god`) and owns
+the `JGY` team and project, so `/god/*` works too (instance users, teams, auth settings).
+
+If a colleague already registered, or you want a second account, bring it in as the owner.
+The invite is a copyable link — this stack has no mail provider, and the API returns the
+token, so nothing has to be sent:
+
+1. signed in as `admin@jegyzo.local`, open project `JGY` → **Members** → **Add member**,
+   type the address, pick *Invite &lt;address&gt;* and press **Send invite**;
+2. the invite appears as a pending row — use **Copy link** and hand that link over (the UI
+   says it explicitly: *"Invite created, but email was not queued. Copy the link to share
+   it."*);
+3. the person opens the link signed in as their account and accepts.
+
+API equivalent (verified against the shipped seed):
+
+```bash
+# owner session — better-auth uses a cookie, not a bearer token
+curl -s -c owner.txt -X POST http://localhost:3000/api/auth/sign-in/email \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"admin@jegyzo.local","password":"Jegyzo1234"}'
+
+# invite the other address into JGY; the response contains the token for the link
+curl -s -b owner.txt -X POST http://localhost:3000/projects/JGY/invites \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"kollega@jegyzo.local","role":"member"}'
+
+# the invited account accepts from its own session
+curl -s -c kollega.txt -X POST http://localhost:3000/api/auth/sign-in/email \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"kollega@jegyzo.local","password":"..."}'
+curl -s -b kollega.txt -X POST http://localhost:3000/invites/<token>/accept
+```
+
+After that the account is a member of the `JGY` team and project, and `GET /projects`
+lists `JGY`. To stop the confusion at the source, the owner can close registration or make
+it invite-only: `PUT /god/auth-settings` (or the corresponding screen in the UI).
 
 ## What the seed contains
 
