@@ -86,7 +86,22 @@ A projekt két részből áll:
 | API health | http://localhost:4000/health | konténer healthcheck |
 | PostgreSQL | localhost:5432 | `jegyzo` / `jegyzo` adatbázis |
 | MailHog (kimenő e-mailek) | http://localhost:8025 | minden e-mail ide fut be |
-| Kiwi TCMS (tesztmenedzsment) | https://localhost:8443 | önaláírt tanúsítvány, `ca.crt`: https://localhost:8443/static/ca.crt |
+| Kiwi TCMS (tesztmenedzsment) | https://localhost:8443 | belépés: `admin` / `kiwiadmin123`; önaláírt tanúsítvány, `ca.crt`: https://localhost:8443/static/ca.crt |
+
+### Kiwi TCMS belépés
+
+| | |
+| --- | --- |
+| Bejelentkezés | **https://localhost:8443/accounts/login/** (a gyökér ide irányít; a `/login/` útvonal 404) |
+| Felhasználó | `admin` (`KIWI_ADMIN_USER` a `.env.example`-ben) |
+| Jelszó | `kiwiadmin123` (`KIWI_ADMIN_PASSWORD` a `.env.example`-ben) |
+| Tanúsítvány | önaláírt: fogadd el a böngésző figyelmeztetését, vagy importáld a `ca.crt`-t |
+
+A `KIWI_ADMIN_USER` / `KIWI_ADMIN_PASSWORD` értékét a `kiwi-init` **csak az első
+inicializáláskor** használja: ekkor jön létre az admin fiók. Ha később átírod őket a
+`.env`-ben, a meglévő fiók jelszava nem változik (a naplóban ilyenkor
+`That username is already taken` látszik) — a jelszót az adatbázisban kell átállítani,
+lásd a [docker útmutató](docs/02-arkitektura/02-docker-es-futtatas.md) Kiwi szakaszát.
 
 A pontos indítási/törlési/újratöltési lépések: [docs/02-architektura/02-docker-es-futtatas.md](docs/02-architektura/02-docker-es-futtatas.md).
 

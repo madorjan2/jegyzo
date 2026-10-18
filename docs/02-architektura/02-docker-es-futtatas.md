@@ -59,6 +59,10 @@ docker compose up -d tracker-postgres tracker-minio tracker-minio-init \
 
 ### 3.1 Kiwi TCMS
 
+- A belépés: **https://localhost:8443/accounts/login/** — a gyökér (`/`) ide
+  irányít, a `/login/` útvonal viszont 404. Az alapértelmezett admin fiók:
+  `admin` / `kiwiadmin123` (a `.env.example`-ben `KIWI_ADMIN_USER` /
+  `KIWI_ADMIN_PASSWORD`), a `https://localhost:8443/admin/` a Django admin.
 - A Kiwi TCMS **HTTPS-t kényszerít**: a `http://localhost:8080` cím átirányít a
   biztonságos címre. Használd közvetlenül a **https://localhost:8443** címet.
 - A tanúsítvány önaláírt, ezért a böngésző figyelmeztet. A tanúsítvány
@@ -70,6 +74,25 @@ docker compose up -d tracker-postgres tracker-minio tracker-minio-init \
 ```bash
 docker compose run --rm kiwi-init
 ```
+
+- **A `KIWI_ADMIN_PASSWORD` csak az első inicializáláskor számít.** A `kiwi-init`
+  a `createsuperuser` paranccsal hozza létre a fiókot; ha az már létezik, nem
+  nyúl hozzá (`That username is already taken` a naplóban), így a `.env`-ben
+  átírt jelszó önmagában nem érvényesül. Meglévő fiók jelszava, aktiválása és
+  adminná tétele az adatbázisban állítható:
+
+```bash
+docker compose exec kiwi python /Kiwi/manage.py shell -c "
+from django.contrib.auth import get_user_model
+U = get_user_model()
+u = U.objects.get(username='admin')
+u.set_password('kiwiadmin123'); u.is_active = True; u.is_superuser = True; u.is_staff = True; u.save()
+print('ok')"
+```
+
+  Ugyanígy aktiválható egy korábban létrehozott, de inaktív fiók is
+  (`u.is_active = True`): az inaktív felhasználót a Kiwi TCMS a bejelentkezésnél
+  egyszerűen elutasítja, vagyis helyes jelszóval is sikertelennek tűnik.
 
 ## 4. Adatok visszaállítása (reset / reseed)
 
