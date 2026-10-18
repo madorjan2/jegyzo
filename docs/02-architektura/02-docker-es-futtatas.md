@@ -48,6 +48,7 @@ docker compose up -d tracker-postgres tracker-minio tracker-minio-init \
 | PostgreSQL | `jegyzo-postgres` | localhost:5432 | `jegyzo` / `jegyzo_dev_pw` |
 | MailHog | `jegyzo-mailhog` | http://localhost:8025 | – |
 | Kiwi TCMS | `jegyzo-kiwi` | **https://localhost:8443** | `KIWI_ADMIN_USER` / `KIWI_ADMIN_PASSWORD` (alapból `admin` / `kiwiadmin123`) |
+| Kiwi TLS tanúsítvány | `jegyzo-kiwi-ssl` | – | egyszer lefutó generálás a `localhost` névre (`kiwi-ssl` kötet) |
 | It's a Plan felület | `jegyzo-tracker-web` | http://localhost:3001 | `admin@jegyzo.local` / `Jegyzo1234` |
 | It's a Plan API / MCP | `jegyzo-tracker-api` | http://localhost:3000 (`/docs`, `/mcp`) | `x-api-key` (`ITSAPLAN_API_KEY`) |
 | Tracker PostgreSQL | `jegyzo-tracker-postgres` | csak belső hálózat | `TRACKER_POSTGRES_*` |
@@ -65,8 +66,29 @@ docker compose up -d tracker-postgres tracker-minio tracker-minio-init \
   `KIWI_ADMIN_PASSWORD`), a `https://localhost:8443/admin/` a Django admin.
 - A Kiwi TCMS **HTTPS-t kényszerít**: a `http://localhost:8080` cím átirányít a
   biztonságos címre. Használd közvetlenül a **https://localhost:8443** címet.
-- A tanúsítvány önaláírt, ezért a böngésző figyelmeztet. A tanúsítvány
-  letölthető és megbízhatóként importálható innen: https://localhost:8443/static/ca.crt
+- A tanúsítvány önaláírt, és **a `localhost` / `127.0.0.1` nevekre szól**: a
+  `kiwi-ssl` szolgáltatás generálja (a Kiwi image beépített tanúsítványa ugyanis a
+  `buildkitsandbox` névre szól, amit minden ellenőrző kliens — curl, Python, MCP
+  szerver — hostnév-hibával elutasít). A böngésző ilyenkor figyelmeztet: fogadd el,
+  vagy importáld a tanúsítványt (a `.local` könyvtár gitignore-olt, ezért jó hely):
+
+```bash
+docker compose cp kiwi:/Kiwi/ssl/localhost.crt .local/kiwi-localhost.crt
+curl --cacert .local/kiwi-localhost.crt https://localhost:8443/accounts/login/   # most már -k nélkül
+```
+
+- Az API (**XML-RPC `/xml-rpc/`, JSON-RPC `/json-rpc/`**) felhasználónévvel és
+  jelszóval hitelesít; **API kulcsot a nyílt forráskódú kiadásban nem lehet
+  létrehozni** (a személyes API token a Kiwi fizetős szolgáltatása, a konténerben
+  nincs is token-oldal). Az MCP szerverek ezért a fenti `admin` /
+  `kiwiadmin123` párost és a tanúsítványt használják, pl.:
+
+```bash
+KIWI_TCMS_URL=https://localhost:8443/json-rpc \
+KIWI_TCMS_USERNAME=admin KIWI_TCMS_PASSWORD=kiwiadmin123 \
+SSL_CERT_FILE=$PWD/.local/kiwi-localhost.crt \
+  kiwi-tcms-mcp-server --transport http --port 3100
+```
 - Az első indításkor a `kiwi-init` konténer automatikusan elvégzi az
   inicializálást (séma, admin felhasználó, domain, jogosultságok). Ha ez
   sikertelen, újrafuttatható:

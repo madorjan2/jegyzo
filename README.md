@@ -86,7 +86,7 @@ A projekt két részből áll:
 | API health | http://localhost:4000/health | konténer healthcheck |
 | PostgreSQL | localhost:5432 | `jegyzo` / `jegyzo` adatbázis |
 | MailHog (kimenő e-mailek) | http://localhost:8025 | minden e-mail ide fut be |
-| Kiwi TCMS (tesztmenedzsment) | https://localhost:8443 | belépés: `admin` / `kiwiadmin123`; önaláírt tanúsítvány, `ca.crt`: https://localhost:8443/static/ca.crt |
+| Kiwi TCMS (tesztmenedzsment) | https://localhost:8443 | belépés: `admin` / `kiwiadmin123`; önaláírt tanúsítvány a `localhost` névre |
 
 ### Kiwi TCMS belépés
 
@@ -95,13 +95,31 @@ A projekt két részből áll:
 | Bejelentkezés | **https://localhost:8443/accounts/login/** (a gyökér ide irányít; a `/login/` útvonal 404) |
 | Felhasználó | `admin` (`KIWI_ADMIN_USER` a `.env.example`-ben) |
 | Jelszó | `kiwiadmin123` (`KIWI_ADMIN_PASSWORD` a `.env.example`-ben) |
-| Tanúsítvány | önaláírt: fogadd el a böngésző figyelmeztetését, vagy importáld a `ca.crt`-t |
+| Tanúsítvány | önaláírt, a `localhost` és `127.0.0.1` nevekre; a böngésző figyelmeztetését elfogadhatod, vagy importálhatod a tanúsítványt |
 
 A `KIWI_ADMIN_USER` / `KIWI_ADMIN_PASSWORD` értékét a `kiwi-init` **csak az első
 inicializáláskor** használja: ekkor jön létre az admin fiók. Ha később átírod őket a
 `.env`-ben, a meglévő fiók jelszava nem változik (a naplóban ilyenkor
 `That username is already taken` látszik) — a jelszót az adatbázisban kell átállítani,
 lásd a [docker útmutató](docs/02-arkitektura/02-docker-es-futtatas.md) Kiwi szakaszát.
+
+### Kiwi TCMS API és MCP
+
+- **API kulcsot nem lehet létrehozni**: a személyes API token a Kiwi TCMS fizetős
+  (Private Tenant / Enterprise) szolgáltatása, a nyílt forráskódú kiadásban nincs is
+  ilyen oldal (`/accounts/api-tokens/` → 404, a képekben nincs token-modul).
+- Az API (XML-RPC `/xml-rpc/`, JSON-RPC `/json-rpc/`) **felhasználónévvel és jelszóval**
+  hitelesít (`Auth.login`), tehát a Kiwi MCP szerverek is ezt használják, nem kulcsot.
+  A tanúsítvány a `localhost` névre szól, ezért a kliensnek meg kell bíznia benne:
+
+```bash
+docker compose cp kiwi:/Kiwi/ssl/localhost.crt .local/kiwi-localhost.crt   # .local gitignore-olt
+# MCP szerver indítása (példa: community kiwi-tcms-mcp-server)
+KIWI_TCMS_URL=https://localhost:8443/json-rpc \
+KIWI_TCMS_USERNAME=admin KIWI_TCMS_PASSWORD=kiwiadmin123 \
+SSL_CERT_FILE=$PWD/.local/kiwi-localhost.crt \
+  kiwi-tcms-mcp-server --transport http --port 3100
+```
 
 A pontos indítási/törlési/újratöltési lépések: [docs/02-architektura/02-docker-es-futtatas.md](docs/02-architektura/02-docker-es-futtatas.md).
 

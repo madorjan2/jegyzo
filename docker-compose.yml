@@ -152,6 +152,42 @@ services:
         python /Kiwi/manage.py refresh_permissions
         echo "Kiwi TCMS kész."
 
+  # Egyszer lefutó tanúsítvány-generálás. A Kiwi image beépített tanúsítványa a
+  # "buildkitsandbox" névre szól, ezért a böngészőn kívül minden ellenőrző
+  # kliens (curl, Python, MCP szerver) hostnév-hibával elutasítja a
+  # https://localhost:8443 címet. Ez a szolgáltatás a használt nevekre generál
+  # újat; idempotens, és az nginx a /Kiwi/ssl alatti fájlokat olvassa.
+  kiwi-ssl:
+    image: alpine:3.20
+    container_name: jegyzo-kiwi-ssl
+    restart: "no"
+    volumes:
+      - kiwi-ssl:/ssl
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -e
+        # A névtelen kötet a Docker viselkedése miatt az image /Kiwi/ssl tartalmával
+        # jön létre, ezért a meglévő fájl nem elég: ellenőrizni kell, hogy a
+        # tanúsítvány a localhost névre is érvényes-e.
+        apk add --no-cache openssl >/dev/null
+        if [ -s /ssl/localhost.crt ] && [ -s /ssl/localhost.key ] &&
+           openssl x509 -in /ssl/localhost.crt -noout -checkhost localhost >/dev/null 2>&1; then
+          echo "Kiwi TLS tanúsítvány már a localhost névre szól."
+          exit 0
+        fi
+        openssl req -x509 -newkey rsa:2048 -sha256 -days 825 -nodes \
+          -keyout /ssl/localhost.key -out /ssl/localhost.crt \
+          -subj "/CN=localhost/O=Jegyzo sandbox" \
+          -addext "subjectAltName=DNS:localhost,IP:127.0.0.1,DNS:buildkitsandbox" \
+          -addext "basicConstraints=critical,CA:FALSE" \
+          -addext "keyUsage=critical,digitalSignature,keyEncipherment" \
+          -addext "extendedKeyUsage=serverAuth"
+        chown 1001:0 /ssl/localhost.crt /ssl/localhost.key
+        chmod 644 /ssl/localhost.crt
+        chmod 640 /ssl/localhost.key
+        echo "Kiwi TLS tanúsítvány kész (localhost, 127.0.0.1)."
+
   kiwi:
     image: pub.kiwitcms.eu/kiwitcms/kiwi:latest
     container_name: jegyzo-kiwi
@@ -160,6 +196,8 @@ services:
       kiwi-db:
         condition: service_healthy
       kiwi-init:
+        condition: service_completed_successfully
+      kiwi-ssl:
         condition: service_completed_successfully
     environment:
       KIWI_DB_HOST: kiwi-db
@@ -172,6 +210,7 @@ services:
       - "${KIWI_HTTPS_PORT:-8443}:8443"
     volumes:
       - kiwi-uploads:/Kiwi/uploads
+      - kiwi-ssl:/Kiwi/ssl:ro
     cap_drop:
       - ALL
     healthcheck:
@@ -377,6 +416,7 @@ volumes:
   postgres-data:
   kiwi-db-data:
   kiwi-uploads:
+  kiwi-ssl:
   tracker-postgres-data:
   tracker-minio-data:
   tracker-db-backups:
